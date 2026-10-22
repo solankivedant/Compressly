@@ -1,0 +1,25 @@
+Section,ID,Item,Cost_INR,Frequency,Week_or_When,Mandatory,Note
+PlanA,C1,Claude subscription (4 months),8000,Monthly,Nov 2026-Feb 2027,Yes,Shared with Doodle Rage; full cost shown
+PlanA,C2,Used test phone 1 (MediaTek budget),8000,One-off,Week 2 (9-13 Nov),Yes,API 29-32 paths and encoder quirks
+PlanA,C3,Used test phone 2 (aggressive OEM Snapdragon),10000,One-off,Week 2 (9-13 Nov),Yes,Battery killers and Android 15 FGS
+PlanA,C4,Google Play developer account,0,One-off,Already paid,No,Connected Interactive account
+PlanA,C5,Firebase / RevenueCat / AdMob / GitHub / Figma / Test Lab,0,Free tier,Phase 0-3,No,Free tiers
+PlanA,C6,Domain for privacy policy and app-ads.txt,1000,Yearly,Week 10 (4-8 Jan),Yes,GitHub Pages hosting
+PlanA,C7,Hindi reviewer (UI and store listing),4000,One-off,Weeks 11 and 14,Yes,Native speaker
+PlanA,C8,Lawyer: privacy policy and DPDP review,12000,One-off,Weeks 12-14,Yes,Before Launch gate
+PlanA,C9,CA: GST and payments setup,8000,One-off,Weeks 12-14,Yes,Before Launch gate
+PlanA,C10,Prototype tester thank-yous (8 x 250),2000,One-off,Week 5 (30 Nov-4 Dec),No,Design gate
+PlanA,C11,Launch marketing: boosted Reels and Shorts,15000,One-off,Week 15 (8-12 Feb),No,India first
+PlanA,C12,YouTuber outreach (lifetime codes),0,One-off,Week 15,No,No cash
+PlanA,C13,Contingency 15%,10200,Reserve,As needed,No,
+PlanA,TOTAL,Plan A total,78200,,,,
+PlanB,B1,Flutter + Android developer (4 x 70000),280000,Monthly,4 months,No,DPR fallback
+PlanB,B2,Native media engineer (3 x 120000),360000,Monthly,3 months,No,Most useful single hire if Engine gate fails
+PlanB,B3,UI/UX designer (2 x 35000),70000,Monthly,2 months,No,
+PlanB,B4,QA tester (1.5 x 40000),60000,Monthly,6 weeks,No,
+PlanB,B5,Test devices (6 used phones),90000,One-off,,No,
+PlanB,B6,Accounts and tools,20000,One-off,,No,
+PlanB,B7,Legal and accounting,30000,One-off,,No,
+PlanB,B8,Launch marketing,150000,One-off,,No,
+PlanB,B9,Contingency 15%,159000,Reserve,,No,
+PlanB,TOTAL,Plan B total,1219000,,,,

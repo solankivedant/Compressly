@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze:*)",
+      "Bash(flutter test:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(flutter pub outdated:*)",
+      "Bash(flutter devices:*)",
+      "Bash(flutter doctor:*)",
+      "Bash(dart format:*)",
+      "Bash(dart run pigeon:*)",
+      "Bash(dart run tool/check_size.dart:*)",
+      "Bash(dart run tool/golden_report.dart:*)",
+      "Bash(./gradlew :app:testDebugUnitTest:*)",
+      "Bash(./gradlew :app:lintDebug:*)",
+      "Bash(adb devices:*)",
+      "Bash(adb logcat:*)",
+      "Bash(adb shell getprop:*)",
+      "Bash(adb shell dumpsys thermalservice:*)",
+      "Bash(adb shell dumpsys battery:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)"
+    ],
+    "deny": [
+      "Read(./android/key.properties)",
+      "Read(./**/*.jks)",
+      "Read(./**/*.keystore)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Bash(adb shell rm:*)",
+      "Bash(adb shell content delete:*)"
+    ]
+  }
+}
