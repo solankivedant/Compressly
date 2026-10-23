@@ -1,0 +1,1 @@
+enum MediaKind { video, photo }

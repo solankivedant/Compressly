@@ -28,7 +28,7 @@ Design work (DESIGN §11) runs alongside Phase 1: wireframes by 13 Nov, Figma by
 | --- | --- | --- | --- |
 | 0.1 ⬜ | Git: make `compressly/` its own repo (like `doodle_rage/`) or confirm the monorepo plan; `.gitignore` adds `key.properties`, `*.jks`, `.env*`; first commit | Repo pushed (private) | NFR-18 |
 | 0.2 ⬜ | Rename to `com.connectedinteractive.compressly` (applicationId, namespace, Kotlin path); app label "Compressly"; `minSdk 29`; portrait; remove `flame` | App launches on phone with new id | TECH_STACK §5, D9 |
-| 0.3 ⬜ | Folder skeleton (ARCHITECTURE §3): `bootstrap()` → `AppScope` → theme tokens → empty Home; `FakeEngineService` | Analyze clean; Home shows on phone and Windows | ARCH §4 |
+| 0.3 🔶 | Folder skeleton (ARCHITECTURE §3): `bootstrap()` → `AppScope` → theme tokens → empty Home; `FakeEngineService` | Analyze clean; Home shows on phone and Windows | ARCH §4 |
 | 0.4 ⬜ | Stricter lints; Kotlin lint config; `tool/check_size.dart` (warn > 22 MB, fail > 25 MB arm64) | Baseline size recorded in PROJECT_PLAN §7 | NFR-09 |
 | 0.5 ⬜ | Pigeon: `pigeons/engine_api.dart` with `getCapabilities()` only; generated Dart + Kotlin; `EngineApiImpl` returns real caps (HEVC encoder present? HDR? HEIC?) | Home shows "HEVC hardware: yes" on the phone | ARCH §5 |
 | 0.6 ⬜ | Room `EngineDatabase` v1 with all tables (ARCH §9) + schema export + first migration test scaffold | Kotlin tests green | ARCH §9 |
@@ -95,7 +95,7 @@ Design work (DESIGN §11) runs alongside Phase 1: wireframes by 13 Nov, Figma by
 | 3.4 ⬜ | RevenueCat + Play products (monthly, yearly, lifetime) + `BillingService` + entitlement push to native | Sandbox purchase unlocks Pro | FR-17, FR-18 |
 | 3.5 ⬜ | `AllowanceGuard` (Kotlin) + `allowance.dart` / `paywall_policy.dart` (Dart), both unit-tested | Free user stops at 2 GB; paywall appears | FR-17, FR-26 |
 | 3.6 ⬜ | Paywall screen (store prices, terms, restore) | Matches DESIGN §3 and FR-40 | FR-40 |
-| 3.7 ⬜ | AdMob rewarded + UMP; +1 GB grant on reward callback; daily cap | Test ad grants bonus; cap enforced | FR-25, FR-34 |
+| 3.7 ⬜ | AdMob rewarded + UMP; +200 MB grant on reward callback; daily cap | Test ad grants bonus; cap enforced | FR-25, FR-34 |
 | 3.8 ⬜ | Remote Config + `setRemoteTuning` + device deny list + kill switches | Changing a key changes behaviour next launch | FR-35, ARCH §7.7 |
 | 3.9 ⬜ | Hindi: all strings to ARB, `app_hi.arb` from native speaker, language override | Whole app in Hindi at 200% font | FR-32, NFR-11 |
 | 3.10 ⬜ | Analytics events + consent sheet + privacy policy page live | Events in DebugView with no media data | FR-33, ARCH §11 |

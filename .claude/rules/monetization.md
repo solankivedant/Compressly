@@ -29,7 +29,7 @@ paths:
 - **Rewarded only.** No banners, no interstitials, no app-open ads.
 - Only Google's official test ad unit ids in code and git. Real ids from `--dart-define=ADMOB_REWARDED_ID`.
 - UMP consent completes before any ad request (FR-34). Non-personalised without consent.
-- Grant the +1 GB bonus **only** in the `onUserEarnedReward` callback. Enforce the daily cap natively.
+- Grant the +200 MB bonus **only** in the `onUserEarnedReward` callback. Enforce the daily cap natively.
 - Show "Watch an ad" only when an ad is loaded. Never block anything waiting for an ad.
 - Never click real ads on your own devices.
 

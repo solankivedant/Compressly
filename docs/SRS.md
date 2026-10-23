@@ -131,7 +131,7 @@ See PRD §9.
 | --- | --- | --- |
 | FR-17 | P0 | The system shall enforce the free-tier allowance and unlock Pro features after verified purchase. |
 | FR-18 | P0 | The system shall restore purchases on reinstall or a new device. |
-| FR-25 | P0 | A completed rewarded ad shall add 1 GB to this month's allowance; max 5 per day (both Remote Config). The bonus is granted only on the SDK reward callback. |
+| FR-25 | P0 | A completed rewarded ad shall add 200 MB (0.2 GB) to this month's allowance; max 5 per day (both Remote Config). The bonus is granted only on the SDK reward callback. |
 | FR-26 | P0 | The scan and savings estimate shall be free and shown before any paywall. The paywall appears only when the allowance is used up or a Pro feature is tapped. |
 | FR-40 | P0 | The paywall shall show the store price, billing period, auto-renewal and how to cancel, and a working "Restore purchases". |
 

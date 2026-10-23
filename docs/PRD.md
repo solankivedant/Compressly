@@ -90,7 +90,7 @@ P0 = MVP (v1.0) · P1 = v1.x (within ~8 weeks of launch) · P2 = v2.
 | Plan | Price (India) | Includes |
 | --- | --- | --- |
 | Free | ₹0 | Unlimited scans; up to 2 GB saved per month; Balanced preset; manual compression only |
-| Free + ads | ₹0 | Each rewarded ad adds 1 GB to this month's allowance; max 5 ads/day |
+| Free + ads | ₹0 | Each rewarded ad adds 200 MB to this month's allowance; max 5 ads/day |
 | Pro monthly | ₹49/month | Unlimited, auto-compress, all presets, no ads |
 | Pro yearly | ₹399/year | Same; **default highlighted** |
 | Lifetime | ₹999 one-time | Same, forever |
@@ -99,6 +99,7 @@ P0 = MVP (v1.0) · P1 = v1.x (within ~8 weeks of launch) · P2 = v2.
 Rules: the scan is always free and shown before any paywall. Paywall appears only when the free allowance is used up or a Pro feature is tapped. Rewarded ads only: no banners, no interstitials, never during a running compression. Billing through RevenueCat on top of Play Billing. SRS FR-17, FR-18, FR-25, FR-26.
 
 > Decision (22 Oct 2026): the DPR said an ad unlocks "3 extra files (or about 1 GB)". We use **+1 GB** so the free tier has a single unit (GB). Tunable by Remote Config.
+> Decision (23 Oct 2026): the Claude Design prototype uses **+200 MB** per ad; Vedant chose the design value. Still one unit (GB, 0.2), still tunable by Remote Config.
 
 ### 5.3 Settings and compliance (P0)
 
@@ -116,7 +117,7 @@ iOS app (ProRes → HEVC, ProRAW → HEIC, Live Photo stripping, duplicates) · 
 
 1. **First run:** Welcome (3 cards) → permission explainer → system prompt → scan (< 30 s) → "You can free up 38 GB" with videos/photos split and top 5 files → "Compress now".
 2. **First compression (free):** select top 5 → queue runs → Review: "Saved 3.1 GB · Looks identical" → "Remove originals" → system dialog → Home shows "3.1 GB freed".
-3. **Hits the limit:** free 2 GB used → paywall: yearly highlighted, "Watch an ad for +1 GB", "Not now".
+3. **Hits the limit:** free 2 GB used → paywall: yearly highlighted, "Watch an ad for +200 MB", "Not now".
 4. **Pro auto mode:** turns on "Auto-compress while charging" → OEM battery guide (on OnePlus/Xiaomi/Vivo/Oppo/Realme) → overnight jobs → morning notification "Ready to free 6.4 GB. Review".
 5. **Cautious user:** chooses "Keep both for 14 days" → after 14 days a notification asks for the delete approval; until then savings show as "pending".
 

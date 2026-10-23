@@ -1,6 +1,6 @@
 # Compressly
 
-On-device Android app (iOS later) that frees 40–60% of photo and video storage. It re-encodes media at **the same resolution** (H.264 → HEVC in MP4; JPEG → lossless-optimised JPEG or HEIC), checks every output with SSIM, and removes originals only after the user approves the system dialog. **No media, thumbnails or file names ever leave the phone.** Freemium: free scan, 2 GB/month free, Pro ₹49/mo · ₹399/yr · ₹999 lifetime, rewarded ads +1 GB. Launch target: Tue 9 Feb 2027.
+On-device Android app (iOS later) that frees 40–60% of photo and video storage. It re-encodes media at **the same resolution** (H.264 → HEVC in MP4; JPEG → lossless-optimised JPEG or HEIC), checks every output with SSIM, and removes originals only after the user approves the system dialog. **No media, thumbnails or file names ever leave the phone.** Freemium: free scan, 2 GB/month free, Pro ₹49/mo · ₹399/yr · ₹999 lifetime, rewarded ads +200 MB. Launch target: Tue 9 Feb 2027.
 
 **Stack:** Flutter 3.47 · Dart 3.13 (UI) · Pigeon bridge · Kotlin native engine: Media3 Transformer (hardware HEVC), HeifWriter, libjpeg-turbo (JNI), Room, WorkManager, foreground service · RevenueCat · AdMob rewarded + UMP · Firebase (Analytics, Crashlytics, Remote Config). No backend.
 The native **Room DB is the single source of truth** for jobs and history; the DPR's Drift layer is dropped (TECH_STACK §1 D4). Don't add Drift, a state-management package or FFmpeg unless asked.

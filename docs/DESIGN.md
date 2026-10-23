@@ -40,7 +40,7 @@ Analytics consent (FR-33) is a small bottom sheet after step 4, not a blocker be
 | Queue | Active job: %, ETA, state words ("Compressing", "Checking quality", "Saving"); status chips: charging, temperature, free space; Pause all |
 | Review originals | Batch list with before/after and quality words; holding period selector; "Remove originals" primary; "Keep original instead" per row |
 | History | Every job: date, file, before → after, quality, outcome (saved / not worth it / skipped and why) |
-| Paywall | Yearly (highlighted, "Best value"), Monthly, Lifetime; "Watch an ad for +1 GB"; Restore; terms (price, period, renewal, how to cancel) |
+| Paywall | Yearly (highlighted, "Best value"), Monthly, Lifetime; "Watch an ad for +200 MB"; Restore; terms (price, period, renewal, how to cancel) |
 | Settings | Preset, run conditions, excluded albums, holding period, language, privacy and consent, restore, battery guide, licences, about |
 | Battery guide | Brand-specific steps with screenshots-as-illustrations; "Open battery settings" deep link where available |
 
@@ -118,7 +118,7 @@ Rules:
 
 - Allowance: 2 GB of savings per calendar month (device local time), counted when a job reaches **ready**.
 - The job that crosses the limit is allowed to finish; the next one shows the paywall.
-- Ad bonus: +1 GB per completed rewarded ad, max 5 ads/day, valid until month end.
+- Ad bonus: +200 MB per completed rewarded ad, max 5 ads/day, valid until month end.
 - Pro features: auto-compress, High and Max savings presets, unlimited savings, no ads.
 - Paywall never interrupts a running job and never appears before the first scan result.
 
@@ -183,3 +183,11 @@ _(empty)_
 ### Done
 
 _(empty)_
+
+## 13. Claude Design prototype (23 Oct 2026)
+
+The Flutter UI follows the Claude Design project "Compressly mobile app prototype" (`Compressly App.dc.html`) and its design system (colour v2: cobalt action, lime freed, coral still-to-free; dark theme default). Tokens live in `lib/app/theme.dart`, shared widgets in `lib/ui/widgets/`.
+
+- Bottom nav: Home · Compress · Media · Settings. The prototype's **Camera** tab (record straight to HEVC) is left out until the CAMERA permission is approved in TECH_STACK §5 with a `policy-checker` review.
+- Rewarded ad: +200 MB (design value, see PRD §5 decision).
+- Screens run on fake services until the engine sessions land; numbers on screen come from `FakeEngineService`.
