@@ -1,0 +1,7 @@
+# Next.js site (Flutter's index.html, manifest.json, favicon.png and icons/ are tracked as usual)
+node_modules/
+.next/
+.data/
+next-env.d.ts
+*.tsbuildinfo
+.env*
