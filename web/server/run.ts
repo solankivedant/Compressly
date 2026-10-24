@@ -35,7 +35,8 @@ export function run(cmd: string, args: string[], opts: { signal?: AbortSignal; o
     });
     child.on('error', (e) => {
       opts.signal?.removeEventListener('abort', onAbort);
-      reject(new Error(`Could not start ${cmd}. Install FFmpeg (winget install Gyan.FFmpeg) or set FFMPEG_PATH. ${e.message}`));
+      const how = process.platform === 'win32' ? 'winget install Gyan.FFmpeg' : process.platform === 'darwin' ? 'brew install ffmpeg' : 'sudo apt install ffmpeg';
+      reject(new Error(`FFmpeg is not installed on this computer. Install it (${how}), then restart the site.`));
     });
     child.on('close', (code) => {
       opts.signal?.removeEventListener('abort', onAbort);

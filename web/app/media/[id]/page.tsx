@@ -1,14 +1,16 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useDevice } from '@/components/device';
 import Compare from '@/components/Compare';
+import SaveToPhone from '@/components/SaveToPhone';
 import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
 import { ProgressBar, clockTime, stateWords, TrustBadge, useNow } from '@/components/ui';
 import { api, useLibrary } from '@/components/useLibrary';
 import { formatDate, formatDuration, formatEta, formatSize, savingPct } from '@/lib/format';
-import { PRESETS, qualityWords, queueRemainingSeconds, remainingSeconds } from '@/lib/rules';
+import { PRESETS, estimateSeconds, jobFraction, liveSpeeds, planQueue, qualityWords } from '@/lib/rules';
 import { ACTIVE_STATES } from '@/lib/types';
 
 export default function FileDetail() {
@@ -16,6 +18,7 @@ export default function FileDetail() {
   const router = useRouter();
   const { data, refresh } = useLibrary();
   const [error, setError] = useState('');
+  const dev = useDevice();
   const item = data?.items.find((x) => x.id === id);
   const now = useNow(!!item && ACTIVE_STATES.includes(item.state));
 
@@ -31,17 +34,9 @@ export default function FileDetail() {
 
   const r = item.result;
   const active = ACTIVE_STATES.includes(item.state);
-  const left = remainingSeconds(item, data.settings, data.speeds, now);
-  // A queued file also waits for the files ahead of it.
-  const ahead =
-    item.state === 'queued'
-      ? queueRemainingSeconds(
-          data.items.filter((x) => x.id !== id && (x.state !== 'queued' || x.addedAt < item.addedAt)),
-          data.settings,
-          data.speeds,
-          now,
-        )
-      : 0;
+  const speeds = liveSpeeds(data.items, data.settings, data.speeds, now);
+  const slot = planQueue(data.items, data.settings, speeds, now).byId[id] ?? { start: 0, end: 0 };
+  const frac = jobFraction(item, data.settings, speeds, now);
   const hasOutput = !!r && ['ready', 'freed', 'notWorthIt'].includes(item.state);
   const act = async (fn: () => Promise<unknown>) => {
     setError('');
@@ -123,6 +118,7 @@ export default function FileDetail() {
               </span>
             </div>
           )}
+          {dev.phone && (item.state === 'ready' || item.state === 'freed') && <SaveToPhone item={item} />}
           {item.state === 'notWorthIt' && (
             <div className="banner info">
               <strong>Not worth compressing, kept as is.</strong> {item.reason} The compressed copy is still shown below so you can see why.
@@ -135,14 +131,15 @@ export default function FileDetail() {
         <section className="card stack">
           <div className="row-between">
             <strong>{stateWords(item.state)}</strong>
-            <span className="tabular muted">{item.state === 'queued' ? 'Waiting for its turn' : `${Math.round(item.progress * 100)}%`}</span>
+            <span className="tabular muted">{item.state === 'queued' ? 'Waiting for its turn' : `${Math.round(frac * 100)}%`}</span>
           </div>
-          <ProgressBar value={item.state === 'queued' ? 0 : item.progress} />
+          <ProgressBar value={item.state === 'queued' ? 0 : frac} />
           <span className="muted tabular" style={{ fontSize: 14 }}>
             <Icon name="clock" size={14} />{' '}
             {item.state === 'queued'
-              ? `Starts in ${formatEta(ahead)}, then takes ${formatEta(left)} · done around ${clockTime(now + (ahead + left) * 1000)}`
-              : `${formatEta(left)} left · done around ${clockTime(now + left * 1000)}`}
+              ? `${slot.start < 1 ? 'Starts next' : `Starts in ${formatEta(slot.start)}`}, then takes ${formatEta(slot.end - slot.start)} · done around ${clockTime(now + slot.end * 1000)}`
+              : `${formatEta(slot.end)} left · done around ${clockTime(now + slot.end * 1000)}`}
+            {item.attempt === 2 && ' · second try at a higher bitrate'}
           </span>
         </section>
       )}
@@ -154,7 +151,7 @@ export default function FileDetail() {
           <div className="row-between">
             <span className="muted">
               Estimated: {formatSize(item.originalBytes)} → ~{formatSize(item.estimateBytes)} with the {PRESETS[data.settings.preset].label} preset ·
-              takes {formatEta(left)}
+              takes {formatEta(estimateSeconds(item, data.settings, speeds))}
             </span>
             <button className="btn primary" onClick={() => void compress()}>
               <Icon name="compress" size={18} /> {item.state === 'new' ? 'Compress' : 'Try again'}
@@ -199,6 +196,7 @@ export default function FileDetail() {
               <div><dt>Audio</dt><dd>{item.hasAudio ? `${Math.round(item.audioKbps ?? 0)} kbps` : 'None'}</dd></div>
             </>
           )}
+          <div><dt>Added from</dt><dd>{item.fromPhone ? 'Phone gallery' : 'Computer'}</dd></div>
           <div><dt>Added</dt><dd>{formatDate(item.addedAt)}</dd></div>
         </dl>
         {r && (

@@ -6,11 +6,14 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Compressly',
   description: 'Free up photo and video storage at the same resolution. Web version for testing.',
+  icons: { icon: '/icon-192.png', apple: '/apple-icon.png' },
+  appleWebApp: { capable: true, title: 'Compressly', statusBarStyle: 'black-translucent' },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
   themeColor: '#090B10',
 };
 

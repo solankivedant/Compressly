@@ -20,7 +20,7 @@ function isActive(path: string, href: string) {
 /** Sidebar on wide screens, bottom nav (like the app) on phones. */
 export default function Shell({ children }: { children: ReactNode }) {
   const path = usePathname();
-  const { data, error } = useLibrary();
+  const { data, error, hosted } = useLibrary();
   const active = data?.summary.activeCount ?? 0;
 
   return (
@@ -53,7 +53,7 @@ export default function Shell({ children }: { children: ReactNode }) {
 
       <main className="content">
         {error && <div className="banner warn">{error}</div>}
-        {children}
+        {hosted ? <HostedNotice /> : children}
       </main>
 
       <nav className="bottom-nav" aria-label="Main">
@@ -85,5 +85,35 @@ export function ScreenHeader({ title, subtitle, back, actions }: { title: string
       </div>
       {actions}
     </header>
+  );
+}
+
+/** Shown instead of the app when it was deployed to a hosting service (the "Server answered 500" problem). */
+function HostedNotice() {
+  return (
+    <>
+      <ScreenHeader title="Run Compressly on your computer" subtitle="This copy can't compress" />
+      <section className="card stack">
+        <p>
+          This copy of the site is running on a hosting service (like Vercel), not on your computer. The web version of Compressly needs your
+          computer: it uses <strong>FFmpeg</strong> to compress videos and keeps your files in a folder on your PC. Hosting services can do
+          neither, which is why pages showed &ldquo;Server answered 500&rdquo; and FFmpeg showed as &ldquo;Not found&rdquo;.
+        </p>
+        <h2 className="section-label">To use it on your phone</h2>
+        <ol className="steps">
+          <li>
+            On your computer, open a terminal in the <code>compressly/web</code> folder and run <code>npm run phone</code>.
+          </li>
+          <li>Keep your phone on the same Wi-Fi as the computer.</li>
+          <li>
+            Open the address it prints (it looks like <code>http://192.168.1.5:3000</code>) on your phone, or scan the QR code under Settings →
+            Open on your phone.
+          </li>
+        </ol>
+        <p className="muted" style={{ fontSize: 14 }}>
+          Your photos and videos then go only to your own computer, never to the internet.
+        </p>
+      </section>
+    </>
   );
 }

@@ -7,6 +7,7 @@ export function formatSize(bytes: number): string {
   if (mb >= 1000) return `${(mb / 1000).toFixed(1)} GB`;
   if (mb >= 10) return `${Math.round(mb)} MB`;
   if (mb >= 1) return `${mb.toFixed(1)} MB`;
+  if (bytes <= 0) return '0 MB';
   return `${Math.max(1, Math.round(bytes / 1000))} KB`;
 }
 

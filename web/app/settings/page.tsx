@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Icon from '@/components/Icon';
+import { NotificationsCard, OpenOnPhoneCard } from '@/components/PhoneCards';
 import { ScreenHeader } from '@/components/Shell';
 import { Segmented } from '@/components/ui';
 import { api, useLibrary } from '@/components/useLibrary';
@@ -62,6 +63,9 @@ export default function SettingsPage() {
   return (
     <>
       <ScreenHeader title="Settings" />
+
+      <OpenOnPhoneCard />
+      <NotificationsCard />
 
       {s && (
         <>

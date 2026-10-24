@@ -7,7 +7,7 @@ import { ScreenHeader } from '@/components/Shell';
 import { Empty, FileRow, ProgressBar, StatCard, TrustBadge, useNow } from '@/components/ui';
 import { useLibrary } from '@/components/useLibrary';
 import { formatEta, formatSize } from '@/lib/format';
-import { queueRemainingSeconds } from '@/lib/rules';
+import { liveSpeeds, planQueue } from '@/lib/rules';
 import type { Summary } from '@/lib/types';
 
 function greeting() {
@@ -181,7 +181,7 @@ export default function Home() {
               bytes={s.stillToFreeBytes}
               sub={
                 s.activeCount > 0
-                  ? `${s.activeCount} in the queue · ${formatEta(queueRemainingSeconds(data.items, data.settings, data.speeds, now))} left`
+                  ? `${s.activeCount} in the queue · ${formatEta(planQueue(data.items, data.settings, liveSpeeds(data.items, data.settings, data.speeds, now), now).total)} left`
                   : s.stillToFreeBytes > 0
                     ? 'Estimate · tap to compress'
                     : 'All done'

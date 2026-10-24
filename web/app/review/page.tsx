@@ -43,8 +43,9 @@ export default function ReviewPage() {
       ) : (
         <>
           <div className="banner info">
-            Open any file to compare before and after. On the phone, &ldquo;Remove originals&rdquo; opens the system delete dialog. Here it marks the
-            files as freed, and you can download the compressed copies.
+            Open any file to compare before and after. Here, &ldquo;Use compressed&rdquo; marks the files as freed so you can save the compressed
+            copies. Replacing the originals in your gallery and deleting them happens only in the Compressly app, where the phone asks you to
+            confirm the delete.
           </div>
           <section className="card" style={{ padding: '4px 12px' }}>
             <div className="list">

@@ -63,6 +63,9 @@ export interface MediaItem {
   progress: number; // 0..1 within the current state
   queuedWith?: Settings;
   startedAt?: number; // when the current or last job began
+  stageStartedAt?: number; // when the current stage (compressing / checking) began
+  attempt?: number; // 2 while a video is being retried at a higher bitrate
+  fromPhone?: boolean; // added from a phone's gallery through the browser
   result?: ItemResult;
   reason?: string; // why it was not worth it, or the error
   decidedAt?: number;
@@ -77,11 +80,17 @@ export interface Summary {
   activeCount: number;
 }
 
-/** Which encoder a job uses; each has its own measured speed. */
-export type SpeedKey = 'video-hevc' | 'video-h264' | 'photo-jpeg' | 'photo-heic';
+/**
+ * Each stage of work has its own measured speed: the video encoders, the video quality check,
+ * and the two photo formats (a photo job is one quick step).
+ */
+export type SpeedKey = 'video-hevc' | 'video-h264' | 'video-check' | 'photo-jpeg' | 'photo-heic';
 
-/** Measured throughput on this computer, in pixels per second for a whole job (encode + quality check). */
+/** Measured throughput on this computer, in pixels per second. */
 export type Speeds = Record<SpeedKey, { pxPerSec: number; samples: number }>;
+
+/** How many files of each kind run at the same time. */
+export const LANES: Record<Kind, number> = { video: 1, photo: 2 };
 
 export interface LibraryResponse {
   items: MediaItem[];

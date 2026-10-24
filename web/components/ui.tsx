@@ -98,7 +98,18 @@ export function stateWords(s: ItemState) {
 }
 
 /** "1.8 GB → 0.7 GB · −61% · Looks identical" — the app's file row. */
-export function FileRow({ item, trailing, href = `/media/${item.id}` }: { item: MediaItem; trailing?: ReactNode; href?: string | null }) {
+export function FileRow({
+  item,
+  trailing,
+  extra,
+  href = `/media/${item.id}`,
+}: {
+  item: MediaItem;
+  trailing?: ReactNode;
+  /** A third line under the sizes, e.g. the time estimate. */
+  extra?: ReactNode;
+  href?: string | null;
+}) {
   const r = item.result;
   const after = r && item.state !== 'notWorthIt' && item.state !== 'failed' ? r.outputBytes : item.estimateBytes;
   const estimated = !r || item.state === 'new' || item.state === 'queued';
@@ -119,6 +130,7 @@ export function FileRow({ item, trailing, href = `/media/${item.id}` }: { item: 
             </>
           )}
         </span>
+        {extra}
       </span>
       {item.state !== 'notWorthIt' && item.state !== 'failed' && pct > 0 && (
         <span className={`saving ${item.state === 'freed' ? 'saving-freed' : ''}`}>−{pct}%</span>

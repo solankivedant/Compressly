@@ -321,3 +321,32 @@ a.row-link:hover .row-title { text-decoration: underline; }
 .eta-total { display: grid; gap: 2px; padding: 12px 14px; border-radius: var(--r-btn); background: var(--primary-container); color: var(--on-primary-container); }
 .eta-total .big { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .eta-total .small { font-size: 13px; opacity: 0.85; }
+
+/* ---------- Phone ---------- */
+code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 0.92em; padding: 1px 5px; border-radius: 6px; background: var(--sunken); overflow-wrap: anywhere; }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.qr-list { display: flex; flex-wrap: wrap; gap: 16px; }
+.qr { margin: 0; display: grid; gap: 6px; justify-items: center; padding: 12px; border-radius: var(--r-btn); background: #fff; color: #10131a; }
+.qr svg { display: block; width: 180px; height: 180px; }
+.qr figcaption { font-size: 13px; font-weight: 700; }
+
+/* ---------- Small phones ---------- */
+.chip.wrap { white-space: normal; }
+@media (max-width: 860px) {
+  .content { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+  .sticky-foot { bottom: calc(84px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 640px) {
+  .screen-header h1 { font-size: 24px; }
+  .facts { grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+  .facts > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  /* Option buttons share the width evenly instead of wrapping to a second line. */
+  .segmented { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
+  .segmented button { padding: 8px 6px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cmp-toolbar .segmented { width: auto; flex: 1; }
+  .sticky-foot { padding: 10px 12px; gap: 8px; }
+  .sticky-foot .btn { width: 100%; }
+  .big-saving .num { font-size: 36px; }
+  .row-between > .row-between { flex: 1 1 100%; justify-content: flex-end; }
+  .qr svg { width: 160px; height: 160px; }
+}

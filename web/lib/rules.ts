@@ -1,5 +1,5 @@
 // Product rules from docs/DESIGN.md §5, shared by server and browser.
-import { ACTIVE_STATES, type MediaItem, type PhotoFormat, type Preset, type Settings, type SpeedKey, type Speeds, type VideoCodec } from './types';
+import { ACTIVE_STATES, LANES, type MediaItem, type PhotoFormat, type Preset, type Settings, type SpeedKey, type Speeds, type VideoCodec } from './types';
 
 export const PRESETS: Record<Preset, { label: string; minSsim: number; pro: boolean; blurb: string }> = {
   high: { label: 'High quality', minSsim: 0.97, pro: true, blurb: 'Smallest change, smaller saving' },
@@ -59,59 +59,125 @@ export function qualityWords(ssim: number): string {
 }
 
 // ---------- Time estimates ----------
+//
+// A video job is two passes over every frame: encoding, then the quality check (SSIM against the original).
+// Each pass has its own measured speed in pixels per second. While a file runs, its live speed replaces the
+// stored one, so the countdown and every waiting file react within seconds instead of after the first file.
 
 /**
- * Starting speeds, measured on the dev PC (1080p HEVC "fast" + SSIM ≈ 43 Mpx/s, 3.8 MP AVIF ≈ 5 Mpx/s).
- * Replaced by this computer's own numbers after each finished file.
+ * Starting speeds, used until this computer has finished a file of that kind.
+ * From the dev PC: 4K HEVC "fast" ≈ 33 Mpx/s encode, SSIM check ≈ 100 Mpx/s, 12 MP AVIF ≈ 1–2 Mpx/s.
  */
 export const DEFAULT_SPEEDS: Speeds = {
-  'video-hevc': { pxPerSec: 40e6, samples: 0 },
+  'video-hevc': { pxPerSec: 33e6, samples: 0 },
   'video-h264': { pxPerSec: 60e6, samples: 0 },
+  'video-check': { pxPerSec: 100e6, samples: 0 },
   'photo-jpeg': { pxPerSec: 15e6, samples: 0 },
-  'photo-heic': { pxPerSec: 5e6, samples: 0 },
+  'photo-heic': { pxPerSec: 2e6, samples: 0 },
 };
+
+const START_COST = { video: 0.5, photo: 0.3 }; // seconds of fixed overhead per job
 
 export function speedKey(kind: MediaItem['kind'], s: Settings): SpeedKey {
   return kind === 'video' ? `video-${s.videoCodec}` : `photo-${s.photoFormat}`;
 }
 
-/** Pixels the job has to push: every frame for video, one picture for a photo. */
+/** Pixels one pass has to push: every frame for video, one picture for a photo. */
 export function workPixels(item: Pick<MediaItem, 'kind' | 'width' | 'height' | 'fps' | 'durationSec'>): number {
   const frame = item.width * item.height;
   return item.kind === 'video' ? frame * (item.fps ?? 30) * (item.durationSec ?? 0) : frame;
 }
 
+const settingsOf = (item: MediaItem, current: Settings) => (ACTIVE_STATES.includes(item.state) ? (item.queuedWith ?? current) : current);
+const rate = (speeds: Speeds, key: SpeedKey) => (speeds[key] ?? DEFAULT_SPEEDS[key]).pxPerSec;
+
 /** Whole-job time in seconds for a file that hasn't started. Assumes no quality retry. */
 export function estimateSeconds(item: MediaItem, s: Settings, speeds: Speeds): number {
-  const speed = (speeds[speedKey(item.kind, s)] ?? DEFAULT_SPEEDS[speedKey(item.kind, s)]).pxPerSec;
-  return Math.max(1, workPixels(item) / speed + (item.kind === 'photo' ? 0.3 : 0.5)); // + fixed start-up cost
+  const work = workPixels(item);
+  const passes = item.kind === 'video' ? work / rate(speeds, speedKey('video', s)) + work / rate(speeds, 'video-check') : work / rate(speeds, speedKey('photo', s));
+  return Math.max(1, passes + START_COST[item.kind]);
 }
 
-// How far through the whole job each stage is (video: the quality check is about a quarter of the work).
-function overallFraction(item: MediaItem): number {
-  if (item.state === 'compressing') return 0.75 * item.progress;
-  if (item.state === 'checking') return 0.75 + 0.22 * item.progress;
-  if (item.state === 'saving') return 0.97;
-  return 0;
+/**
+ * The stored speeds, with each running video's live speed blended in. Early progress is noisy (FFmpeg start-up),
+ * so the live number takes over gradually: fully trusted from 30% of a stage, or 2 minutes in.
+ */
+export function liveSpeeds(items: MediaItem[], current: Settings, speeds: Speeds, now = Date.now()): Speeds {
+  const out = { ...speeds };
+  for (const x of items) {
+    if (x.kind !== 'video' || !x.stageStartedAt || (x.state !== 'compressing' && x.state !== 'checking')) continue;
+    const elapsed = (now - x.stageStartedAt) / 1000;
+    if (x.progress < 0.02 || elapsed < 3) continue;
+    const live = (workPixels(x) * x.progress) / elapsed;
+    const key: SpeedKey = x.state === 'checking' ? 'video-check' : speedKey('video', settingsOf(x, current));
+    const trust = Math.min(1, Math.max(x.progress / 0.3, elapsed / 120));
+    out[key] = { pxPerSec: rate(speeds, key) * (1 - trust) + live * trust, samples: speeds[key]?.samples ?? 0 };
+  }
+  return out;
 }
 
-/** Seconds left for one file: full estimate if waiting, a live countdown if running. */
+/** Seconds left for one file: the full estimate if it hasn't started, a live countdown if it's running. */
 export function remainingSeconds(item: MediaItem, current: Settings, speeds: Speeds, now = Date.now()): number {
-  const s = ACTIVE_STATES.includes(item.state) ? (item.queuedWith ?? current) : current;
-  const est = estimateSeconds(item, s, speeds);
-  if (item.state === 'new' || item.state === 'queued' || item.state === 'failed') return est;
-  if (!ACTIVE_STATES.includes(item.state) || !item.startedAt) return 0;
-  const elapsed = Math.max(0, (now - item.startedAt) / 1000);
-  const byClock = Math.max(0, est - elapsed);
-  const f = item.kind === 'video' ? overallFraction(item) : 0;
-  if (f < 0.05) return byClock;
-  // Trust the measured progress more as the job goes on.
-  const byProgress = (elapsed / f) * (1 - f);
-  const w = Math.min(1, f * 2);
-  return w * byProgress + (1 - w) * byClock;
+  const s = settingsOf(item, current);
+  if (!ACTIVE_STATES.includes(item.state) || item.state === 'queued') {
+    return item.state === 'new' || item.state === 'queued' || item.state === 'failed' ? estimateSeconds(item, s, speeds) : 0;
+  }
+  if (item.state === 'saving') return 0.5;
+  const work = workPixels(item);
+  if (item.kind === 'photo') {
+    const elapsed = item.startedAt ? (now - item.startedAt) / 1000 : 0;
+    return Math.max(0.5, estimateSeconds(item, s, speeds) - elapsed);
+  }
+  // `speeds` should come from liveSpeeds(), so the running stage already uses its measured speed.
+  const check = rate(speeds, 'video-check');
+  if (item.state === 'checking') return (work * (1 - item.progress)) / check + 0.5;
+  return (work * (1 - item.progress)) / rate(speeds, speedKey('video', s)) + work / check + 0.5;
 }
 
-/** Time until the whole queue (running + waiting) is done. */
-export function queueRemainingSeconds(items: MediaItem[], current: Settings, speeds: Speeds, now = Date.now()): number {
-  return items.filter((x) => ACTIVE_STATES.includes(x.state)).reduce((n, x) => n + remainingSeconds(x, current, speeds, now), 0);
+/** How far through the whole job a running file is, 0..1, by time (so the bar and the countdown agree). */
+export function jobFraction(item: MediaItem, current: Settings, speeds: Speeds, now = Date.now()): number {
+  if (item.state === 'saving') return 0.99;
+  if (!item.startedAt || (item.state !== 'compressing' && item.state !== 'checking')) return 0;
+  const done = Math.max(0, (now - item.startedAt) / 1000);
+  const left = remainingSeconds(item, current, speeds, now);
+  return Math.min(0.99, done / Math.max(0.001, done + left));
+}
+
+export interface QueuePlan {
+  /** Seconds until everything running and waiting is done. */
+  total: number;
+  /** When each file starts and finishes, in seconds from now. */
+  byId: Record<string, { start: number; end: number }>;
+}
+
+/**
+ * Lays the queue out the way the worker runs it: videos one at a time, photos two at a time,
+ * both kinds side by side, oldest first. `extra` are files to plan as if they were added to the queue now.
+ */
+export function planQueue(items: MediaItem[], current: Settings, speeds: Speeds, now = Date.now(), extra: MediaItem[] = []): QueuePlan {
+  const byId: QueuePlan['byId'] = {};
+  let total = 0;
+  for (const kind of ['video', 'photo'] as const) {
+    const slots: number[] = Array(LANES[kind]).fill(0);
+    const mine = items.filter((x) => x.kind === kind && ACTIVE_STATES.includes(x.state));
+    const running = mine.filter((x) => x.state !== 'queued');
+    const waiting = [
+      ...mine.filter((x) => x.state === 'queued').sort((a, b) => a.addedAt - b.addedAt),
+      ...extra.filter((x) => x.kind === kind).map((x) => ({ ...x, state: 'queued' as const })),
+    ];
+    const earliest = () => slots.indexOf(Math.min(...slots));
+    for (const x of running) {
+      const i = earliest();
+      slots[i] += remainingSeconds(x, current, speeds, now);
+      byId[x.id] = { start: 0, end: slots[i] };
+    }
+    for (const x of waiting) {
+      const i = earliest();
+      const start = slots[i];
+      slots[i] += estimateSeconds(x, settingsOf(x, current), speeds);
+      byId[x.id] = { start, end: slots[i] };
+    }
+    total = Math.max(total, ...slots);
+  }
+  return { total, byId };
 }

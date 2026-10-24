@@ -1,14 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDevice } from '@/components/device';
 import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
 import { FileRow, ProgressBar, Segmented, Thumb, clockTime, stateWords, useNow } from '@/components/ui';
 import { api, useLibrary } from '@/components/useLibrary';
 import { formatEta, formatEtaShort, formatSize } from '@/lib/format';
-import { DEFAULT_SPEEDS, PHOTO_FORMATS, PRESETS, queueRemainingSeconds, remainingSeconds, speedKey } from '@/lib/rules';
-import { ACTIVE_STATES, type MediaItem, type Preset, type Settings } from '@/lib/types';
+import { DEFAULT_SPEEDS, PHOTO_FORMATS, PRESETS, estimateSeconds, jobFraction, liveSpeeds, planQueue, speedKey } from '@/lib/rules';
+import { ACTIVE_STATES, LANES, type MediaItem, type Preset, type Settings } from '@/lib/types';
 
 const VIDEO_EXT = /\.(mp4|mov|m4v|mkv|webm|avi|3gp)$/i;
 const PHOTO_EXT = /\.(jpe?g|png|webp|avif|heic|heif|tiff?|gif|bmp)$/i;
@@ -28,12 +29,15 @@ interface Upload {
   error?: string;
 }
 
-function uploadOne(file: File, onProgress: (p: number) => void): Promise<MediaItem> {
+type WakeLock = { release: () => Promise<void> };
+
+function uploadOne(file: File, fromPhone: boolean, onProgress: (p: number) => void): Promise<MediaItem> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/items');
     xhr.setRequestHeader('Content-Type', mimeOf(file));
     xhr.setRequestHeader('x-filename', encodeURIComponent(file.name));
+    if (fromPhone) xhr.setRequestHeader('x-from-phone', '1');
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => {
       let body: { error?: string } = {};
@@ -43,7 +47,7 @@ function uploadOne(file: File, onProgress: (p: number) => void): Promise<MediaIt
       if (xhr.status >= 400) reject(new Error(body.error ?? `Upload failed (${xhr.status})`));
       else resolve(body as MediaItem);
     };
-    xhr.onerror = () => reject(new Error('Upload failed. Is the local server running?'));
+    xhr.onerror = () => reject(new Error('Adding stopped. Keep this page open (and the phone unlocked) until adding finishes, then try again.'));
     xhr.send(file);
   });
 }
@@ -55,6 +59,7 @@ export default function CompressPage() {
   const [picked, setPicked] = useState<Set<string> | null>(null); // null = everything selected
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const dev = useDevice();
   const input = useRef<HTMLInputElement>(null);
 
   const items = data?.items ?? [];
@@ -65,14 +70,19 @@ export default function CompressPage() {
   const chosen = useMemo(() => todo.filter((x) => (picked ? picked.has(x.id) : true)), [todo, picked]);
   const chosenSaving = chosen.reduce((n, x) => n + Math.max(0, x.originalBytes - x.estimateBytes), 0);
 
-  // Time estimates: per file, the running queue, and the files ticked below it.
+  // Time estimates. Running videos lend their live speed to every estimate, so times correct themselves within seconds.
   const now = useNow(active.length > 0);
-  const speeds = data?.speeds ?? DEFAULT_SPEEDS;
-  const eta = (x: MediaItem) => (settings ? remainingSeconds(x, settings, speeds, now) : 0);
-  const queueLeft = settings ? queueRemainingSeconds(items, settings, speeds, now) : 0;
-  const chosenTime = chosen.reduce((n, x) => n + eta(x), 0);
-  // True while some encoder hasn't finished a file on this computer yet, so its time is still the built-in guess.
-  const firstGuess = !!settings && [...active, ...chosen].some((x) => !speeds[speedKey(x.kind, x.queuedWith ?? settings)]?.samples);
+  const speeds = settings ? liveSpeeds(items, settings, data?.speeds ?? DEFAULT_SPEEDS, now) : DEFAULT_SPEEDS;
+  const plan = settings ? planQueue(items, settings, speeds, now) : { total: 0, byId: {} };
+  const withChosen = settings && chosen.length ? planQueue(items, settings, speeds, now, chosen) : plan;
+  const est = (x: MediaItem) => (settings ? estimateSeconds(x, settings, speeds) : 0);
+  // True while some stage hasn't finished on this computer yet, so its time is still the built-in guess.
+  const firstGuess =
+    !!settings &&
+    [...active, ...chosen].some(
+      (x) => !speeds[speedKey(x.kind, x.queuedWith ?? settings)]?.samples || (x.kind === 'video' && !speeds['video-check']?.samples),
+    );
+  const sideBySide = active.some((x) => x.kind === 'video') && active.some((x) => x.kind === 'photo');
 
   const addFiles = async (list: FileList | null) => {
     if (!list?.length) return;
@@ -81,17 +91,24 @@ export default function CompressPage() {
     if (files.length < list.length) setError('Some files were skipped: only photos and videos can be added.');
     const batch = files.map((f, i) => ({ key: `${Date.now()}-${i}`, name: f.name, size: f.size, progress: 0 }));
     setUploads((u) => [...u, ...batch]);
+    // Phones dim and lock the screen during long uploads, which stops them, so ask the screen to stay on.
+    let wake: WakeLock | null = null;
+    try {
+      const wl = (navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<WakeLock> } }).wakeLock;
+      wake = wl ? await wl.request('screen') : null;
+    } catch {}
     // One at a time, so a big video doesn't starve the rest.
     for (let i = 0; i < files.length; i++) {
       const key = batch[i].key;
       try {
-        await uploadOne(files[i], (p) => setUploads((u) => u.map((x) => (x.key === key ? { ...x, progress: p } : x))));
+        await uploadOne(files[i], dev.phone, (p) => setUploads((u) => u.map((x) => (x.key === key ? { ...x, progress: p } : x))));
         setUploads((u) => u.filter((x) => x.key !== key));
         await refresh();
       } catch (e) {
         setUploads((u) => u.map((x) => (x.key === key ? { ...x, error: (e as Error).message } : x)));
       }
     }
+    await wake?.release().catch(() => {});
   };
 
   const setSetting = async (patch: Partial<Settings>) => {
@@ -139,10 +156,19 @@ export default function CompressPage() {
       >
         <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => void addFiles(e.target.files).then(() => (e.target.value = ''))} />
         <span className="drop-icon">
-          <Icon name="upload" size={24} />
+          <Icon name={dev.phone ? 'media' : 'upload'} size={24} />
         </span>
-        <strong>Drop photos and videos here</strong>
-        <span className="muted">or click to choose. Copy them from your phone first for a real test.</span>
+        {dev.phone ? (
+          <>
+            <strong>Choose from your gallery</strong>
+            <span className="muted">Pick photos and videos. They are copied to your computer to compress; the originals stay in your gallery.</span>
+          </>
+        ) : (
+          <>
+            <strong>Drop photos and videos here</strong>
+            <span className="muted">or click to choose. To pick straight from your phone&apos;s gallery, open this site on the phone (Settings → Open on your phone).</span>
+          </>
+        )}
       </label>
 
       {error && <div className="banner warn">{error}</div>}
@@ -152,15 +178,20 @@ export default function CompressPage() {
           <h2 className="section-label" style={{ paddingBottom: 4 }}>
             Adding
           </h2>
+          {dev.phone && (
+            <p className="muted" style={{ fontSize: 13, padding: '0 4px' }}>
+              Keep this page open until adding finishes. After that you can lock your phone; compressing carries on.
+            </p>
+          )}
           {uploads.map((u) => (
             <div key={u.key} className="queue-row">
-              <div className="row-between">
+              <div className="row-between" style={{ flexWrap: 'nowrap' }}>
                 <span className="row-title">{u.name}</span>
                 <span className="muted tabular">{u.error ? '' : `${Math.round(u.progress * 100)}%`}</span>
               </div>
               {u.error ? (
                 <div className="row-between">
-                  <span className="chip warn">{u.error}</span>
+                  <span className="chip warn wrap">{u.error}</span>
                   <button className="btn ghost small" onClick={() => setUploads((x) => x.filter((y) => y.key !== u.key))}>
                     Dismiss
                   </button>
@@ -203,34 +234,51 @@ export default function CompressPage() {
           </div>
           <div className="eta-total" aria-live="polite">
             <span className="small">Time left for the whole queue</span>
-            <span className="big">{formatEta(queueLeft)}</span>
+            <span className="big">{formatEta(plan.total)}</span>
             <span className="small">
-              Done around {clockTime(now + queueLeft * 1000)}
-              {firstGuess && ' · first guess, gets more accurate after each file'}
+              Done around {clockTime(now + plan.total * 1000)}
+              {firstGuess && ' · first guess, sharpens as files run'}
             </span>
           </div>
-          {active.map((x) => (
-            <div key={x.id} className="queue-row">
-              <div className="file-row" style={{ padding: 0 }}>
-                <Thumb item={x} size={40} />
-                <span className="row-main">
-                  <span className="row-title">{x.name}</span>
-                  <span className="row-sub">
-                    {stateWords(x.state)}
-                    {x.state !== 'queued' && ` · ${Math.round(x.progress * 100)}%`}
+          {sideBySide && (
+            <p className="muted" style={{ fontSize: 13, padding: '8px 4px 0' }}>
+              Photos run beside the video: {LANES.video} video and up to {LANES.photo} photos at once.
+            </p>
+          )}
+          {active.map((x) => {
+            const p = plan.byId[x.id];
+            const running = x.state !== 'queued';
+            const frac = settings ? jobFraction(x, settings, speeds, now) : 0;
+            return (
+              <div key={x.id} className="queue-row">
+                <div className="file-row" style={{ padding: 0 }}>
+                  <Thumb item={x} size={40} />
+                  <span className="row-main">
+                    <span className="row-title">{x.name}</span>
+                    <span className="row-sub">
+                      {stateWords(x.state)}
+                      {x.attempt === 2 && ' (second try)'}
+                      {running && ` · ${Math.round(frac * 100)}%`}
+                    </span>
+                    {p && (
+                      <span className="eta">
+                        <Icon name="clock" size={13} />
+                        {running
+                          ? `${formatEtaShort(p.end)} left`
+                          : p.start < 1
+                            ? `next · takes ${formatEtaShort(p.end - p.start)}`
+                            : `starts in ${formatEtaShort(p.start)} · takes ${formatEtaShort(p.end - p.start)}`}
+                      </span>
+                    )}
                   </span>
-                </span>
-                <span className="eta" title="Estimated time for this file">
-                  <Icon name="clock" size={14} />
-                  {x.state === 'queued' ? formatEtaShort(eta(x)) : `${formatEtaShort(eta(x))} left`}
-                </span>
-                <button className="icon-btn" aria-label={`Cancel ${x.name}`} onClick={() => void api(`/api/queue?id=${x.id}`, { method: 'DELETE' }).then(refresh)}>
-                  <Icon name="close" size={16} />
-                </button>
+                  <button className="icon-btn" aria-label={`Cancel ${x.name}`} onClick={() => void api(`/api/queue?id=${x.id}`, { method: 'DELETE' }).then(refresh)}>
+                    <Icon name="close" size={16} />
+                  </button>
+                </div>
+                {running && <ProgressBar value={frac} />}
               </div>
-              {x.state !== 'queued' && <ProgressBar value={x.progress} />}
-            </div>
-          ))}
+            );
+          })}
         </section>
       )}
 
@@ -259,20 +307,20 @@ export default function CompressPage() {
                 <FileRow
                   key={x.id}
                   item={x}
+                  extra={
+                    <span className="eta">
+                      <Icon name="clock" size={13} />
+                      takes {formatEtaShort(est(x))}
+                    </span>
+                  }
                   trailing={
-                    <>
-                      <span className="eta" title="Estimated time to compress">
-                        <Icon name="clock" size={14} />
-                        {formatEtaShort(eta(x))}
-                      </span>
-                      <input
-                        type="checkbox"
-                        className="check"
-                        checked={picked ? picked.has(x.id) : true}
-                        onChange={() => toggle(x.id)}
-                        aria-label={`Include ${x.name}`}
-                      />
-                    </>
+                    <input
+                      type="checkbox"
+                      className="check"
+                      checked={picked ? picked.has(x.id) : true}
+                      onChange={() => toggle(x.id)}
+                      aria-label={`Include ${x.name}`}
+                    />
                   }
                 />
               ))}
@@ -288,11 +336,12 @@ export default function CompressPage() {
               <span>
                 <strong>{chosen.length} files</strong> <span className="muted">· save about {formatSize(chosenSaving)}</span>
               </span>
-              <span className="muted" style={{ fontSize: 13 }}>
-                <Icon name="clock" size={13} /> Takes {formatEta(chosenTime)}
-                {active.length > 0 ? `, after the current queue (${formatEta(queueLeft)})` : ''} · done around{' '}
-                {clockTime(now + (chosenTime + queueLeft) * 1000)}
-              </span>
+              {chosen.length > 0 && (
+                <span className="muted" style={{ fontSize: 13 }}>
+                  <Icon name="clock" size={13} /> {active.length > 0 ? 'With the current queue, all done in' : 'Takes'} {formatEta(withChosen.total)} ·
+                  around {clockTime(now + withChosen.total * 1000)}
+                </span>
+              )}
             </span>
             <button className="btn primary" disabled={busy || chosen.length === 0} onClick={start}>
               <Icon name="compress" size={18} /> Compress {chosen.length} {chosen.length === 1 ? 'file' : 'files'}
