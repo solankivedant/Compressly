@@ -6,68 +6,39 @@ import { useDevice } from '@/components/device';
 import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
 import { FileRow, ProgressBar, Segmented, Thumb, clockTime, stateWords, useNow } from '@/components/ui';
-import { api, useLibrary } from '@/components/useLibrary';
+import { useLibrary } from '@/components/useLibrary';
+import { engine, mediaKind } from '@/engine/engine';
+import { canOpenFolder, pickFolder } from '@/engine/folder';
 import { formatEta, formatEtaShort, formatSize } from '@/lib/format';
 import { DEFAULT_SPEEDS, PHOTO_FORMATS, PRESETS, estimateSeconds, jobFraction, liveSpeeds, planQueue, speedKey } from '@/lib/rules';
 import { ACTIVE_STATES, LANES, type MediaItem, type Preset, type Settings } from '@/lib/types';
 
-const VIDEO_EXT = /\.(mp4|mov|m4v|mkv|webm|avi|3gp)$/i;
-const PHOTO_EXT = /\.(jpe?g|png|webp|avif|heic|heif|tiff?|gif|bmp)$/i;
-
-function mimeOf(f: File) {
-  if (f.type.startsWith('video/') || f.type.startsWith('image/')) return f.type;
-  if (VIDEO_EXT.test(f.name)) return 'video/mp4';
-  if (PHOTO_EXT.test(f.name)) return 'image/jpeg';
-  return '';
-}
-
-interface Upload {
-  key: string;
-  name: string;
-  size: number;
-  progress: number;
-  error?: string;
-}
-
-type WakeLock = { release: () => Promise<void> };
-
-function uploadOne(file: File, fromPhone: boolean, onProgress: (p: number) => void): Promise<MediaItem> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/items');
-    xhr.setRequestHeader('Content-Type', mimeOf(file));
-    xhr.setRequestHeader('x-filename', encodeURIComponent(file.name));
-    if (fromPhone) xhr.setRequestHeader('x-from-phone', '1');
-    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-    xhr.onload = () => {
-      let body: { error?: string } = {};
-      try {
-        body = JSON.parse(xhr.responseText);
-      } catch {}
-      if (xhr.status >= 400) reject(new Error(body.error ?? `Upload failed (${xhr.status})`));
-      else resolve(body as MediaItem);
-    };
-    xhr.onerror = () => reject(new Error('Adding stopped. Keep this page open (and the phone unlocked) until adding finishes, then try again.'));
-    xhr.send(file);
-  });
+interface Adding {
+  total: number;
+  done: number;
 }
 
 export default function CompressPage() {
-  const { data, refresh } = useLibrary();
-  const [uploads, setUploads] = useState<Upload[]>([]);
+  const { data } = useLibrary();
+  const [adding, setAdding] = useState<Adding | null>(null);
+  const [problems, setProblems] = useState<string[]>([]);
+  const [folderOk, setFolderOk] = useState(false);
   const [over, setOver] = useState(false);
   const [picked, setPicked] = useState<Set<string> | null>(null); // null = everything selected
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const dev = useDevice();
   const input = useRef<HTMLInputElement>(null);
+  useEffect(() => setFolderOk(canOpenFolder()), []);
 
   const items = data?.items ?? [];
   const settings = data?.settings;
   const active = items.filter((x) => ACTIVE_STATES.includes(x.state)).sort((a, b) => a.addedAt - b.addedAt);
   const todo = items.filter((x) => x.state === 'new' || x.state === 'failed');
+  // After a reload, files picked from the gallery have to be picked again (the browser doesn't keep them).
+  const gone = (x: MediaItem) => engine.availability(x.id) === 'gone';
   const ready = items.filter((x) => x.state === 'ready');
-  const chosen = useMemo(() => todo.filter((x) => (picked ? picked.has(x.id) : true)), [todo, picked]);
+  const chosen = useMemo(() => todo.filter((x) => !gone(x) && (picked ? picked.has(x.id) : true)), [todo, picked]); // eslint-disable-line react-hooks/exhaustive-deps
   const chosenSaving = chosen.reduce((n, x) => n + Math.max(0, x.originalBytes - x.estimateBytes), 0);
 
   // Time estimates. Running videos lend their live speed to every estimate, so times correct themselves within seconds.
@@ -76,7 +47,7 @@ export default function CompressPage() {
   const plan = settings ? planQueue(items, settings, speeds, now) : { total: 0, byId: {} };
   const withChosen = settings && chosen.length ? planQueue(items, settings, speeds, now, chosen) : plan;
   const est = (x: MediaItem) => (settings ? estimateSeconds(x, settings, speeds) : 0);
-  // True while some stage hasn't finished on this computer yet, so its time is still the built-in guess.
+  // True while some stage hasn't finished on this device yet, so its time is still the built-in guess.
   const firstGuess =
     !!settings &&
     [...active, ...chosen].some(
@@ -84,45 +55,38 @@ export default function CompressPage() {
     );
   const sideBySide = active.some((x) => x.kind === 'video') && active.some((x) => x.kind === 'photo');
 
-  const addFiles = async (list: FileList | null) => {
-    if (!list?.length) return;
+  const addFiles = async (list: FileList | File[] | null) => {
+    const files = Array.from(list ?? []);
+    if (!files.length) return;
     setError('');
-    const files = Array.from(list).filter((f) => mimeOf(f));
-    if (files.length < list.length) setError('Some files were skipped: only photos and videos can be added.');
-    const batch = files.map((f, i) => ({ key: `${Date.now()}-${i}`, name: f.name, size: f.size, progress: 0 }));
-    setUploads((u) => [...u, ...batch]);
-    // Phones dim and lock the screen during long uploads, which stops them, so ask the screen to stay on.
-    let wake: WakeLock | null = null;
-    try {
-      const wl = (navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<WakeLock> } }).wakeLock;
-      wake = wl ? await wl.request('screen') : null;
-    } catch {}
-    // One at a time, so a big video doesn't starve the rest.
-    for (let i = 0; i < files.length; i++) {
-      const key = batch[i].key;
-      try {
-        await uploadOne(files[i], dev.phone, (p) => setUploads((u) => u.map((x) => (x.key === key ? { ...x, progress: p } : x))));
-        setUploads((u) => u.filter((x) => x.key !== key));
-        await refresh();
-      } catch (e) {
-        setUploads((u) => u.map((x) => (x.key === key ? { ...x, error: (e as Error).message } : x)));
-      }
-    }
-    await wake?.release().catch(() => {});
+    const media = files.filter((f) => mediaKind(f));
+    if (media.length < files.length) setError('Some files were skipped: only photos and videos can be added.');
+    setAdding({ total: media.length, done: 0 });
+    const p = await engine.add(media.map((file) => ({ file })), { fromPhone: dev.phone, onEach: (done) => setAdding({ total: media.length, done }) });
+    setProblems(p);
+    setAdding(null);
   };
 
-  const setSetting = async (patch: Partial<Settings>) => {
-    await api('/api/settings', { method: 'PUT', json: patch });
-    await refresh();
+  const openFolder = async () => {
+    setError('');
+    const found = await pickFolder();
+    if (!found) return;
+    if (!found.length) return setError('No photos or videos were found in that folder.');
+    setAdding({ total: found.length, done: 0 });
+    const p = await engine.add(found, { fromPhone: dev.phone, onEach: (done) => setAdding({ total: found.length, done }) });
+    setProblems(p);
+    setAdding(null);
   };
+
+  const setSetting = (patch: Partial<Settings>) => engine.setSettings(patch);
 
   const start = async () => {
     setBusy(true);
     setError('');
     try {
-      await api('/api/queue', { method: 'POST', json: { ids: chosen.map((x) => x.id) } });
+      const r = await engine.enqueue(chosen.map((x) => x.id));
+      if (r.missing.length) setError(`${r.missing.length} file(s) need to be added again before they can be compressed.`);
       setPicked(null);
-      await refresh();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -161,47 +125,44 @@ export default function CompressPage() {
         {dev.phone ? (
           <>
             <strong>Choose from your gallery</strong>
-            <span className="muted">Pick photos and videos. They are copied to your computer to compress; the originals stay in your gallery.</span>
+            <span className="muted">Pick photos and videos. They are compressed right here on this phone; nothing is uploaded.</span>
           </>
         ) : (
           <>
             <strong>Drop photos and videos here</strong>
-            <span className="muted">or click to choose. To pick straight from your phone&apos;s gallery, open this site on the phone (Settings → Open on your phone).</span>
+            <span className="muted">or click to choose. They are compressed right here on this device; nothing is uploaded.</span>
           </>
         )}
       </label>
 
-      {error && <div className="banner warn">{error}</div>}
+      {folderOk && (
+        <button className="btn block" onClick={() => void openFolder()} disabled={!!adding}>
+          <Icon name="media" size={18} /> Open a folder · compressed copies can replace the originals there
+        </button>
+      )}
 
-      {uploads.length > 0 && (
-        <section className="card">
-          <h2 className="section-label" style={{ paddingBottom: 4 }}>
-            Adding
-          </h2>
-          {dev.phone && (
-            <p className="muted" style={{ fontSize: 13, padding: '0 4px' }}>
-              Keep this page open until adding finishes. After that you can lock your phone; compressing carries on.
-            </p>
-          )}
-          {uploads.map((u) => (
-            <div key={u.key} className="queue-row">
-              <div className="row-between" style={{ flexWrap: 'nowrap' }}>
-                <span className="row-title">{u.name}</span>
-                <span className="muted tabular">{u.error ? '' : `${Math.round(u.progress * 100)}%`}</span>
-              </div>
-              {u.error ? (
-                <div className="row-between">
-                  <span className="chip warn wrap">{u.error}</span>
-                  <button className="btn ghost small" onClick={() => setUploads((x) => x.filter((y) => y.key !== u.key))}>
-                    Dismiss
-                  </button>
-                </div>
-              ) : (
-                <ProgressBar value={u.progress < 1 ? u.progress : 1} />
-              )}
-              {!u.error && u.progress >= 1 && <span className="muted" style={{ fontSize: 13 }}>Reading the file and making a thumbnail…</span>}
-            </div>
+      {error && <div className="banner warn">{error}</div>}
+      {problems.length > 0 && (
+        <div className="banner warn stack" style={{ gap: 4 }}>
+          <strong>Some files could not be added</strong>
+          {problems.slice(0, 5).map((p) => (
+            <span key={p}>{p}</span>
           ))}
+          <button className="btn ghost small" style={{ justifySelf: 'start' }} onClick={() => setProblems([])}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {adding && (
+        <section className="card stack">
+          <div className="row-between">
+            <strong>Reading files…</strong>
+            <span className="muted tabular">
+              {adding.done} of {adding.total}
+            </span>
+          </div>
+          <ProgressBar value={adding.total ? adding.done / adding.total : 0} />
         </section>
       )}
 
@@ -271,7 +232,7 @@ export default function CompressPage() {
                       </span>
                     )}
                   </span>
-                  <button className="icon-btn" aria-label={`Cancel ${x.name}`} onClick={() => void api(`/api/queue?id=${x.id}`, { method: 'DELETE' }).then(refresh)}>
+                  <button className="icon-btn" aria-label={`Cancel ${x.name}`} onClick={() => engine.cancel(x.id)}>
                     <Icon name="close" size={16} />
                   </button>
                 </div>
@@ -308,16 +269,21 @@ export default function CompressPage() {
                   key={x.id}
                   item={x}
                   extra={
-                    <span className="eta">
-                      <Icon name="clock" size={13} />
-                      takes {formatEtaShort(est(x))}
-                    </span>
+                    gone(x) ? (
+                      <span className="eta">Pick this file again to compress it</span>
+                    ) : (
+                      <span className="eta">
+                        <Icon name="clock" size={13} />
+                        takes {formatEtaShort(est(x))}
+                      </span>
+                    )
                   }
                   trailing={
                     <input
+                      disabled={gone(x)}
                       type="checkbox"
                       className="check"
-                      checked={picked ? picked.has(x.id) : true}
+                      checked={!gone(x) && (picked ? picked.has(x.id) : true)}
                       onChange={() => toggle(x.id)}
                       aria-label={`Include ${x.name}`}
                     />
@@ -350,7 +316,13 @@ export default function CompressPage() {
         </>
       )}
 
-      {todo.length === 0 && active.length === 0 && uploads.length === 0 && items.length > 0 && (
+      {active.length > 0 && (
+        <p className="muted" style={{ fontSize: 13, textAlign: 'center' }}>
+          Keep Compressly open while it works{dev.phone ? ': the screen stays on, and locking the phone pauses compressing' : ''}.
+        </p>
+      )}
+
+      {todo.length === 0 && active.length === 0 && !adding && items.length > 0 && (
         <p className="trust">Everything you added has been compressed. Add more above.</p>
       )}
     </>

@@ -5,25 +5,25 @@ import { useState } from 'react';
 import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
 import { Empty, FileRow, TrustBadge } from '@/components/ui';
-import { api, useLibrary } from '@/components/useLibrary';
+import { useLibrary } from '@/components/useLibrary';
+import { engine } from '@/engine/engine';
 import { formatSize } from '@/lib/format';
 
 /** The app's "Review originals": accept the compressed copies, or keep an original per file. */
 export default function ReviewPage() {
-  const { data, refresh } = useLibrary();
+  const { data } = useLibrary();
   const [busy, setBusy] = useState(false);
   const ready = (data?.items ?? []).filter((x) => x.state === 'ready');
   const total = ready.reduce((n, x) => n + x.originalBytes - (x.result?.outputBytes ?? 0), 0);
 
   const decide = async (id: string, action: 'accept' | 'keepOriginal') => {
-    await api(`/api/items/${id}`, { method: 'PATCH', json: { action } });
+    await engine.decide(id, action);
   };
 
   const acceptAll = async () => {
     setBusy(true);
     try {
       for (const x of ready) await decide(x.id, 'accept');
-      await refresh();
     } finally {
       setBusy(false);
     }
@@ -43,9 +43,9 @@ export default function ReviewPage() {
       ) : (
         <>
           <div className="banner info">
-            Open any file to compare before and after. Here, &ldquo;Use compressed&rdquo; marks the files as freed so you can save the compressed
-            copies. Replacing the originals in your gallery and deleting them happens only in the Compressly app, where the phone asks you to
-            confirm the delete.
+            Open any file to compare before and after. &ldquo;Use compressed&rdquo; marks the files as freed; then save each compressed copy to
+            your device, or, for files added with &ldquo;Open a folder&rdquo;, replace the original in its folder from the file&apos;s page. Phone
+            galleries can only be changed by the Compressly app.
           </div>
           <section className="card" style={{ padding: '4px 12px' }}>
             <div className="list">
@@ -54,7 +54,7 @@ export default function ReviewPage() {
                   key={x.id}
                   item={x}
                   trailing={
-                    <button className="btn ghost small" onClick={() => void decide(x.id, 'keepOriginal').then(refresh)}>
+                    <button className="btn ghost small" onClick={() => void decide(x.id, 'keepOriginal')}>
                       Keep original
                     </button>
                   }

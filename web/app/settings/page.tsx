@@ -2,21 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import Icon from '@/components/Icon';
-import { NotificationsCard, OpenOnPhoneCard } from '@/components/PhoneCards';
+import { DeviceCard, NotificationsCard } from '@/components/PhoneCards';
 import { ScreenHeader } from '@/components/Shell';
 import { Segmented } from '@/components/ui';
-import { api, useLibrary } from '@/components/useLibrary';
+import { useLibrary } from '@/components/useLibrary';
+import { engine } from '@/engine/engine';
 import { CODECS, PHOTO_FORMATS, PRESETS } from '@/lib/rules';
 import type { PhotoFormat, Preset, Settings, VideoCodec } from '@/lib/types';
 
 type Theme = 'dark' | 'light' | 'system';
-
-interface Health {
-  ffmpeg: { ok: boolean; version?: string; hevc?: boolean; error?: string };
-  sharp: Record<string, string>;
-  dataDir: string;
-  node: string;
-}
 
 function applyTheme(t: Theme) {
   try {
@@ -41,9 +35,8 @@ function Option<T extends string>({ value, current, onPick, title, desc, tag }: 
 }
 
 export default function SettingsPage() {
-  const { data, refresh } = useLibrary();
+  const { data } = useLibrary();
   const [theme, setTheme] = useState<Theme>('dark');
-  const [health, setHealth] = useState<Health | null>(null);
   const [hevcPlays, setHevcPlays] = useState<boolean | null>(null);
   const s = data?.settings;
 
@@ -52,19 +45,15 @@ export default function SettingsPage() {
       setTheme((localStorage.getItem('theme') as Theme) || 'dark');
     } catch {}
     setHevcPlays(document.createElement('video').canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"') !== '');
-    void fetch('/api/health').then((r) => r.json()).then(setHealth).catch(() => {});
   }, []);
 
-  const save = async (patch: Partial<Settings>) => {
-    await api('/api/settings', { method: 'PUT', json: patch });
-    await refresh();
-  };
+  const save = (patch: Partial<Settings>) => engine.setSettings(patch);
 
   return (
     <>
       <ScreenHeader title="Settings" />
 
-      <OpenOnPhoneCard />
+      <DeviceCard />
       <NotificationsCard />
 
       {s && (
@@ -140,30 +129,12 @@ export default function SettingsPage() {
       </section>
 
       <section className="card stack">
-        <h2 className="section-label">Tools on this computer</h2>
-        {!health ? (
-          <span className="muted">Checking…</span>
-        ) : (
-          <dl className="facts">
-            <div>
-              <dt>FFmpeg</dt>
-              <dd>{health.ffmpeg.ok ? `${health.ffmpeg.version}${health.ffmpeg.hevc ? ' · HEVC ✓' : ' · no HEVC encoder'}` : 'Not found'}</dd>
-            </div>
-            <div><dt>sharp / libvips</dt><dd>{health.sharp.sharp} / {health.sharp.vips}</dd></div>
-            <div><dt>Node.js</dt><dd>{health.node}</dd></div>
-            <div style={{ gridColumn: '1 / -1' }}><dt>Library folder</dt><dd>{health.dataDir}</dd></div>
-          </dl>
-        )}
-        {health && !health.ffmpeg.ok && <div className="banner warn">{health.ffmpeg.error} Videos can&apos;t be compressed until FFmpeg is installed.</div>}
-      </section>
-
-      <section className="card stack">
         <h2 className="section-label">Library</h2>
         <div className="row-between">
-          <span className="muted">Remove every file and result from the web library. Files you added from your own folders are not touched.</span>
+          <span className="muted">Remove every file and compressed copy from Compressly on this device. Your original photos and videos are not touched.</span>
           <button
             className="btn"
-            onClick={() => confirm('Clear the whole web library?') && void api('/api/items', { method: 'DELETE' }).then(refresh)}
+            onClick={() => confirm('Clear the whole library on this device? Compressed copies you have not saved are deleted.') && void engine.clear()}
           >
             <Icon name="trash" size={16} /> Clear library
           </button>

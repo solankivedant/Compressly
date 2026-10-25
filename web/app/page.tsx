@@ -107,7 +107,7 @@ function Welcome() {
       <div className="pillars">
         {[
           { icon: 'sparkle' as const, t: 'Same resolution', d: 'Width, height, frame rate and length never change.' },
-          { icon: 'shield' as const, t: 'Stays on this computer', d: 'Files go to the local server only, nothing is uploaded online.' },
+          { icon: 'shield' as const, t: 'Stays on this device', d: 'Compressing happens right here in your browser. Nothing is uploaded.' },
           { icon: 'checkCircle' as const, t: 'You approve every change', d: 'Nothing replaces an original until you say so.' },
         ].map((p) => (
           <div key={p.t} className="pillar">

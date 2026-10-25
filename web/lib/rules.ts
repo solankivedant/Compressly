@@ -1,4 +1,4 @@
-// Product rules from docs/DESIGN.md §5, shared by server and browser.
+// Product rules from docs/DESIGN.md §5, shared by the pages and the engine.
 import { ACTIVE_STATES, LANES, type MediaItem, type PhotoFormat, type Preset, type Settings, type SpeedKey, type Speeds, type VideoCodec } from './types';
 
 export const PRESETS: Record<Preset, { label: string; minSsim: number; pro: boolean; blurb: string }> = {
@@ -65,16 +65,40 @@ export function qualityWords(ssim: number): string {
 // stored one, so the countdown and every waiting file react within seconds instead of after the first file.
 
 /**
- * Starting speeds, used until this computer has finished a file of that kind.
- * From the dev PC: 4K HEVC "fast" ≈ 33 Mpx/s encode, SSIM check ≈ 100 Mpx/s, 12 MP AVIF ≈ 1–2 Mpx/s.
+ * Starting speeds, used until this device has finished a file of that kind. Everything runs in the browser:
+ * video through the device's own encoder (WebCodecs, usually hardware), photos through WebAssembly encoders.
+ * Deliberately on the slow side, since phones are slower than laptops; each device replaces them with its own.
  */
 export const DEFAULT_SPEEDS: Speeds = {
-  'video-hevc': { pxPerSec: 33e6, samples: 0 },
+  'video-hevc': { pxPerSec: 60e6, samples: 0 },
   'video-h264': { pxPerSec: 60e6, samples: 0 },
-  'video-check': { pxPerSec: 100e6, samples: 0 },
-  'photo-jpeg': { pxPerSec: 15e6, samples: 0 },
-  'photo-heic': { pxPerSec: 2e6, samples: 0 },
+  'video-check': { pxPerSec: 15e6, samples: 0 },
+  'photo-jpeg': { pxPerSec: 8e6, samples: 0 },
+  'photo-heic': { pxPerSec: 1e6, samples: 0 },
 };
+
+/** How many frames the video quality check compares: about one every 3 s, between 6 and 30. */
+export function checkFrames(durationSec: number): number {
+  return Math.max(6, Math.min(30, Math.ceil(durationSec / 3)));
+}
+
+/** Pixels the quality check has to compare (both copies of each sampled frame are decoded). */
+export function checkPixels(item: Pick<MediaItem, 'width' | 'height' | 'durationSec'>): number {
+  return item.width * item.height * checkFrames(item.durationSec ?? 0);
+}
+
+/** Expected compressed size, before compressing (DESIGN §5). */
+export function estimateBytes(item: MediaItem, s: Settings): number {
+  if (item.kind === 'photo') return Math.round(item.originalBytes * (1 - PHOTO_FORMATS[s.photoFormat].typicalSaving));
+  const { kbps } = videoTargetKbps(s.preset, s.videoCodec, {
+    width: item.width,
+    height: item.height,
+    fps: item.fps ?? 30,
+    bitrateKbps: item.bitrateKbps ?? 0,
+  });
+  const bytes = ((kbps + (item.audioKbps ?? 0)) * 1000 * (item.durationSec ?? 0)) / 8;
+  return Math.round(Math.min(item.originalBytes, bytes));
+}
 
 const START_COST = { video: 0.5, photo: 0.3 }; // seconds of fixed overhead per job
 
@@ -94,12 +118,15 @@ const rate = (speeds: Speeds, key: SpeedKey) => (speeds[key] ?? DEFAULT_SPEEDS[k
 /** Whole-job time in seconds for a file that hasn't started. Assumes no quality retry. */
 export function estimateSeconds(item: MediaItem, s: Settings, speeds: Speeds): number {
   const work = workPixels(item);
-  const passes = item.kind === 'video' ? work / rate(speeds, speedKey('video', s)) + work / rate(speeds, 'video-check') : work / rate(speeds, speedKey('photo', s));
+  const passes =
+    item.kind === 'video'
+      ? work / rate(speeds, speedKey('video', s)) + checkPixels(item) / rate(speeds, 'video-check')
+      : work / rate(speeds, speedKey('photo', s));
   return Math.max(1, passes + START_COST[item.kind]);
 }
 
 /**
- * The stored speeds, with each running video's live speed blended in. Early progress is noisy (FFmpeg start-up),
+ * The stored speeds, with each running video's live speed blended in. Early progress is noisy (encoder start-up),
  * so the live number takes over gradually: fully trusted from 30% of a stage, or 2 minutes in.
  */
 export function liveSpeeds(items: MediaItem[], current: Settings, speeds: Speeds, now = Date.now()): Speeds {
@@ -108,7 +135,7 @@ export function liveSpeeds(items: MediaItem[], current: Settings, speeds: Speeds
     if (x.kind !== 'video' || !x.stageStartedAt || (x.state !== 'compressing' && x.state !== 'checking')) continue;
     const elapsed = (now - x.stageStartedAt) / 1000;
     if (x.progress < 0.02 || elapsed < 3) continue;
-    const live = (workPixels(x) * x.progress) / elapsed;
+    const live = ((x.state === 'checking' ? checkPixels(x) : workPixels(x)) * x.progress) / elapsed;
     const key: SpeedKey = x.state === 'checking' ? 'video-check' : speedKey('video', settingsOf(x, current));
     const trust = Math.min(1, Math.max(x.progress / 0.3, elapsed / 120));
     out[key] = { pxPerSec: rate(speeds, key) * (1 - trust) + live * trust, samples: speeds[key]?.samples ?? 0 };
@@ -130,8 +157,8 @@ export function remainingSeconds(item: MediaItem, current: Settings, speeds: Spe
   }
   // `speeds` should come from liveSpeeds(), so the running stage already uses its measured speed.
   const check = rate(speeds, 'video-check');
-  if (item.state === 'checking') return (work * (1 - item.progress)) / check + 0.5;
-  return (work * (1 - item.progress)) / rate(speeds, speedKey('video', s)) + work / check + 0.5;
+  if (item.state === 'checking') return (checkPixels(item) * (1 - item.progress)) / check + 0.5;
+  return (work * (1 - item.progress)) / rate(speeds, speedKey('video', s)) + checkPixels(item) / check + 0.5;
 }
 
 /** How far through the whole job a running file is, 0..1, by time (so the bar and the countdown agree). */

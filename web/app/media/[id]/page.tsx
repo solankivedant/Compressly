@@ -1,14 +1,14 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useDevice } from '@/components/device';
 import Compare from '@/components/Compare';
-import SaveToPhone from '@/components/SaveToPhone';
 import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
 import { ProgressBar, clockTime, stateWords, TrustBadge, useNow } from '@/components/ui';
-import { api, useLibrary } from '@/components/useLibrary';
+import { saveFile, useFileUrl, useLibrary } from '@/components/useLibrary';
+import { engine } from '@/engine/engine';
 import { formatDate, formatDuration, formatEta, formatSize, savingPct } from '@/lib/format';
 import { PRESETS, estimateSeconds, jobFraction, liveSpeeds, planQueue, qualityWords } from '@/lib/rules';
 import { ACTIVE_STATES } from '@/lib/types';
@@ -16,11 +16,16 @@ import { ACTIVE_STATES } from '@/lib/types';
 export default function FileDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { data, refresh } = useLibrary();
+  const { data } = useLibrary();
   const [error, setError] = useState('');
+  const [note, setNote] = useState('');
+  const [askTick, setAskTick] = useState(0);
   const dev = useDevice();
   const item = data?.items.find((x) => x.id === id);
   const now = useNow(!!item && ACTIVE_STATES.includes(item.state));
+  // Both copies are read from this device's storage.
+  const origUrl = useFileUrl(() => engine.original(id, askTick > 0), `${id}-${askTick}-${item?.replaced}-${item?.state === 'new'}`);
+  const outUrl = useFileUrl(() => engine.output(id), `${id}-${item?.result?.finishedAt}-${item?.state}`);
 
   if (!data) return <ScreenHeader title="File" back="/media" />;
   if (!item) {
@@ -40,15 +45,40 @@ export default function FileDetail() {
   const hasOutput = !!r && ['ready', 'freed', 'notWorthIt'].includes(item.state);
   const act = async (fn: () => Promise<unknown>) => {
     setError('');
+    setNote('');
     try {
       await fn();
-      await refresh();
     } catch (e) {
       setError((e as Error).message);
     }
   };
-  const decide = (action: 'accept' | 'keepOriginal') => act(() => api(`/api/items/${id}`, { method: 'PATCH', json: { action } }));
-  const compress = () => act(() => api('/api/queue', { method: 'POST', json: { ids: [id] } }));
+  const decide = (action: 'accept' | 'keepOriginal') => act(() => engine.decide(id, action));
+  const compress = () =>
+    act(async () => {
+      const r = await engine.enqueue([id]);
+      if (r.missing.length) throw new Error('The original is no longer available on this page. Add the file again to compress it.');
+    });
+  const outName = r ? `${item.name.replace(/\.[^.]+$/, '')}-compressed.${r.outputExt}` : '';
+  const saveCompressed = () =>
+    act(async () => {
+      const f = await engine.output(id);
+      if (!f) throw new Error('The compressed copy is missing. Compress the file again.');
+      const how = await saveFile(f, outName, dev.phone);
+      if (how === 'downloaded') setNote(dev.phone ? 'Saved to Downloads. Your gallery shows it there.' : 'Saved to your Downloads folder.');
+      if (how === 'shared') setNote('Saved.');
+    });
+  const saveOriginal = () =>
+    act(async () => {
+      const f = await engine.original(id, true);
+      if (!f) throw new Error('The original is not available any more.');
+      await saveFile(f, item.name, false);
+    });
+  const replace = () =>
+    act(async () => {
+      if (!confirm(`Replace "${item.name}" in its folder with the compressed copy? The original is deleted and this can't be undone.`)) return;
+      await engine.replaceInFolder(id);
+      setNote('Replaced. The folder now holds the compressed copy and the original is gone.');
+    });
 
   return (
     <>
@@ -62,9 +92,9 @@ export default function FileDetail() {
             aria-label="Remove from library"
             title="Remove from library"
             onClick={() =>
-              confirm('Remove this file from the web library? Your own copy on disk is not touched.') &&
+              confirm('Remove this file from Compressly? The original file on your device is not touched.') &&
               void act(async () => {
-                await api(`/api/items/${id}`, { method: 'DELETE' });
+                await engine.remove(id);
                 router.push('/media');
               })
             }
@@ -75,6 +105,7 @@ export default function FileDetail() {
       />
 
       {error && <div className="banner warn">{error}</div>}
+      {note && <div className="banner good">{note}</div>}
 
       {/* Outcome and the decision, like the app's Review screen */}
       {r && hasOutput && (
@@ -106,19 +137,40 @@ export default function FileDetail() {
           {item.state === 'freed' && (
             <div className="row-between">
               <span className="chip accent">
-                <Icon name="checkCircle" size={14} /> Freed {formatSize(item.originalBytes - r.outputBytes)}
+                <Icon name="checkCircle" size={14} /> {item.replaced ? 'Replaced in its folder' : 'Freed'} · {formatSize(item.originalBytes - r.outputBytes)}
               </span>
-              <span className="row-between" style={{ gap: 8 }}>
+              {!item.replaced && (
                 <button className="btn ghost small" onClick={() => void decide('keepOriginal')}>
                   Undo, keep original
                 </button>
-                <a className="btn primary small" href={`/api/items/${id}/output?download`}>
-                  <Icon name="download" size={16} /> Download compressed
-                </a>
-              </span>
+              )}
             </div>
           )}
-          {dev.phone && (item.state === 'ready' || item.state === 'freed') && <SaveToPhone item={item} />}
+          {(item.state === 'ready' || item.state === 'freed') && !item.replaced && (
+            <div className="stack" style={{ gap: 8 }}>
+              {item.inFolder && engine.availability(id) !== 'gone' ? (
+                <>
+                  <button className="btn primary block" onClick={() => void replace()}>
+                    <Icon name="compress" size={18} /> Replace the original in its folder
+                  </button>
+                  <span className="muted" style={{ fontSize: 13 }}>
+                    Writes the compressed copy into {item.folderPath?.replace(/\/[^/]+$/, '') || 'the folder'} and deletes the original.
+                    {r.outputExt !== item.ext && ` The new file ends in .${r.outputExt}.`}
+                  </span>
+                </>
+              ) : null}
+              <button className={`btn block ${item.inFolder || item.state === 'ready' ? '' : 'primary'}`} onClick={() => void saveCompressed()}>
+                <Icon name="download" size={18} /> {dev.phone ? 'Save compressed copy to this phone' : 'Save compressed copy'}
+              </button>
+              {!item.inFolder && (
+                <span className="muted" style={{ fontSize: 13 }}>
+                  {dev.phone
+                    ? "A website can't change your gallery, so the original stays there until you delete it. Replacing it automatically is done by the Compressly app."
+                    : 'To replace originals automatically, add files with "Open a folder" on the Compress page.'}
+                </span>
+              )}
+            </div>
+          )}
           {item.state === 'notWorthIt' && (
             <div className="banner info">
               <strong>Not worth compressing, kept as is.</strong> {item.reason} The compressed copy is still shown below so you can see why.
@@ -160,23 +212,38 @@ export default function FileDetail() {
         </section>
       )}
 
-      {hasOutput ? (
+      {origUrl === '' && !item.replaced && (
+        <div className="banner info row-between">
+          <span>
+            {item.inFolder
+              ? 'Compressly needs your OK to read the original from its folder again.'
+              : 'The original is not available after the page was reloaded. Pick the file again on the Compress page to compare or compress it.'}
+          </span>
+          {item.inFolder && (
+            <button className="btn small" onClick={() => setAskTick((n) => n + 1)}>
+              Allow
+            </button>
+          )}
+        </div>
+      )}
+
+      {hasOutput && origUrl && outUrl ? (
         <Compare
           key={`${id}-${r!.finishedAt}`}
           kind={item.kind}
-          before={`/api/items/${id}/original`}
-          after={`/api/items/${id}/output?v=${r!.finishedAt}`}
+          before={origUrl}
+          after={outUrl}
           beforeLabel={`Original · ${formatSize(item.originalBytes)}`}
           afterLabel={`Compressed · ${formatSize(r!.outputBytes)}`}
           fps={item.fps}
         />
-      ) : (
+      ) : (outUrl || origUrl) && (
         <section className="card">
           {item.kind === 'video' ? (
-            <video src={`/api/items/${id}/original`} controls playsInline style={{ width: '100%', borderRadius: 12, background: '#000', maxHeight: 480 }} />
+            <video src={hasOutput && outUrl ? outUrl : origUrl} controls playsInline style={{ width: '100%', borderRadius: 12, background: '#000', maxHeight: 480 }} />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={`/api/items/${id}/original`} alt={item.name} style={{ width: '100%', borderRadius: 12, maxHeight: 520, objectFit: 'contain', background: '#000' }} />
+            <img src={hasOutput && outUrl ? outUrl : origUrl} alt={item.name} style={{ width: '100%', borderRadius: 12, maxHeight: 520, objectFit: 'contain', background: '#000' }} />
           )}
         </section>
       )}
@@ -196,7 +263,7 @@ export default function FileDetail() {
               <div><dt>Audio</dt><dd>{item.hasAudio ? `${Math.round(item.audioKbps ?? 0)} kbps` : 'None'}</dd></div>
             </>
           )}
-          <div><dt>Added from</dt><dd>{item.fromPhone ? 'Phone gallery' : 'Computer'}</dd></div>
+          <div><dt>Added from</dt><dd>{item.inFolder ? item.folderPath : item.fromPhone ? 'Phone gallery' : 'This device'}</dd></div>
           <div><dt>Added</dt><dd>{formatDate(item.addedAt)}</dd></div>
         </dl>
         {r && (
@@ -222,13 +289,15 @@ export default function FileDetail() {
           </>
         )}
         <div className="row-between" style={{ justifyContent: 'flex-start', gap: 8 }}>
-          <a className="btn small" href={`/api/items/${id}/original?download`}>
-            <Icon name="download" size={16} /> Original
-          </a>
+          {origUrl && !item.replaced && (
+            <button className="btn small" onClick={() => void saveOriginal()}>
+              <Icon name="download" size={16} /> Original
+            </button>
+          )}
           {hasOutput && (
-            <a className="btn small" href={`/api/items/${id}/output?download`}>
+            <button className="btn small" onClick={() => void saveCompressed()}>
               <Icon name="download" size={16} /> Compressed
-            </a>
+            </button>
           )}
         </div>
       </section>

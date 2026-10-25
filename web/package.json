@@ -2,28 +2,25 @@
   "name": "compressly-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Web version of Compressly for checking compression by hand before the phone app is built.",
+  "description": "Web version of Compressly that compresses on whatever device opens it (no server), for checking before the phone app is built.",
   "scripts": {
     "dev": "next dev",
-    "phone": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@jsquash/avif": "2.1.1",
+    "@jsquash/jpeg": "1.6.0",
+    "mediabunny": "1.61.0",
     "next": "^15.1.0",
-    "qrcode": "^1.5.4",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "sharp": "^0.34.1",
-    "web-push": "^3.6.7"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/web-push": "^3.6.4",
     "typescript": "^5.7.0"
   }
 }

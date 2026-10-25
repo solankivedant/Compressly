@@ -6,10 +6,11 @@ import { formatDuration, formatSize, savingPct, sizeParts } from '@/lib/format';
 import { qualityWords } from '@/lib/rules';
 import type { ItemState, MediaItem } from '@/lib/types';
 import Icon, { type IconName } from './Icon';
+import { useThumbUrl } from './useLibrary';
 
 export type Tone = 'accent' | 'primary' | 'tertiary' | 'neutral';
 
-/** Current time, re-read every second while `live` is true, so countdowns tick between server polls. */
+/** Current time, re-read every second while `live` is true, so countdowns tick smoothly. */
 export function useNow(live: boolean) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -68,10 +69,11 @@ export function ProgressBar({ value, tone = 'primary' }: { value: number; tone?:
 }
 
 export function Thumb({ item, size = 48 }: { item: MediaItem; size?: number }) {
+  const url = useThumbUrl(item.id);
   return (
     <span className="thumb" style={{ width: size, height: size }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`/api/items/${item.id}/thumb`} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.visibility = 'hidden')} />
+      {url && <img src={url} alt="" loading="lazy" />}
       <span className="thumb-kind">
         <Icon name={item.kind === 'video' ? 'video' : 'photo'} size={12} />
         {item.kind === 'video' && item.durationSec ? formatDuration(item.durationSec) : null}
@@ -166,7 +168,7 @@ export function Empty({ icon, title, children }: { icon: IconName; title: string
 export function TrustBadge() {
   return (
     <p className="trust">
-      <Icon name="shield" size={16} /> Processed on this computer · same resolution
+      <Icon name="shield" size={16} /> Processed on this device · nothing is uploaded · same resolution
     </p>
   );
 }

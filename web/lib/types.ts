@@ -1,4 +1,4 @@
-// Shapes shared by the browser and the Node.js server. No Node imports here.
+// Shapes shared by the pages and the in-browser compression engine.
 
 export type Kind = 'video' | 'photo';
 export type Preset = 'high' | 'balanced' | 'max';
@@ -65,7 +65,13 @@ export interface MediaItem {
   startedAt?: number; // when the current or last job began
   stageStartedAt?: number; // when the current stage (compressing / checking) began
   attempt?: number; // 2 while a video is being retried at a higher bitrate
-  fromPhone?: boolean; // added from a phone's gallery through the browser
+  fromPhone?: boolean; // added on a phone (from its gallery)
+  /** Added from a folder opened with "Open a folder": the file can be replaced in place there. */
+  inFolder?: boolean;
+  /** Where in that folder, for display, e.g. "Camera/VID_2041.mp4". */
+  folderPath?: string;
+  /** The compressed copy replaced the original in its folder (the original is gone). */
+  replaced?: boolean;
   result?: ItemResult;
   reason?: string; // why it was not worth it, or the error
   decidedAt?: number;
@@ -86,7 +92,7 @@ export interface Summary {
  */
 export type SpeedKey = 'video-hevc' | 'video-h264' | 'video-check' | 'photo-jpeg' | 'photo-heic';
 
-/** Measured throughput on this computer, in pixels per second. */
+/** Measured throughput on this device, in pixels per second. */
 export type Speeds = Record<SpeedKey, { pxPerSec: number; samples: number }>;
 
 /** How many files of each kind run at the same time. */
@@ -98,6 +104,15 @@ export interface LibraryResponse {
   settings: Settings;
   speeds: Speeds;
 }
+
+/** Engine worker messages. */
+export type JobIn =
+  | { type: 'job'; id: string; item: MediaItem; file: File; settings: Settings }
+  | { type: 'cancel'; id: string };
+export type JobOut =
+  | { type: 'stage'; id: string; state: 'compressing' | 'checking' | 'saving'; progress: number }
+  | { type: 'done'; id: string; result: ItemResult }
+  | { type: 'error'; id: string; message: string; cancelled?: boolean };
 
 export function summarize(items: MediaItem[]): Summary {
   const s: Summary = { libraryBytes: 0, freedBytes: 0, pendingBytes: 0, stillToFreeBytes: 0, compressedCount: 0, activeCount: 0 };

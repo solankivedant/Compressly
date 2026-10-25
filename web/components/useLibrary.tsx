@@ -1,69 +1,86 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { db } from '@/engine/db';
+import { engine } from '@/engine/engine';
+import { registerServiceWorker } from '@/engine/notify';
 import type { LibraryResponse } from '@/lib/types';
-import { registerServiceWorker } from './push';
 
-interface LibraryCtx {
-  data: LibraryResponse | null;
-  error: string;
-  /** The site is deployed on a hosting service instead of running on a computer. */
-  hosted: boolean;
-  refresh: () => Promise<void>;
-}
-
-const Ctx = createContext<LibraryCtx>({ data: null, error: '', hosted: false, refresh: async () => {} });
-
-/** One poll for the whole site: fast while something is compressing, slow otherwise. */
+/** Starts the on-device engine once for the whole site. */
 export function LibraryProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<LibraryResponse | null>(null);
-  const [error, setError] = useState('');
-  const [hosted, setHosted] = useState(false);
-
-  const refresh = useCallback(async () => {
-    try {
-      const r = await fetch('/api/items', { cache: 'no-store' });
-      if (r.status === 503 && (await r.clone().json().catch(() => ({}))).hosted) {
-        setHosted(true);
-        setError('');
-        return;
-      }
-      if (!r.ok) throw new Error(`Server answered ${r.status}`);
-      setData(await r.json());
-      setError('');
-    } catch (e) {
-      setError(`Can't reach the Compressly server on your computer. Is it still running? (${(e as Error).message})`);
-    }
-  }, []);
-
   useEffect(() => {
     registerServiceWorker();
-    // Phones pause pages in the background; catch up the moment the page is visible again.
-    const onShow = () => document.visibilityState === 'visible' && void refresh();
-    document.addEventListener('visibilitychange', onShow);
-    return () => document.removeEventListener('visibilitychange', onShow);
-  }, [refresh]);
-
-  const busy = (data?.summary.activeCount ?? 0) > 0;
-  useEffect(() => {
-    if (hosted) return;
-    void refresh();
-    const t = setInterval(refresh, busy ? 1000 : 3000);
-    return () => clearInterval(t);
-  }, [refresh, busy, hosted]);
-
-  return <Ctx.Provider value={{ data, error, hosted, refresh }}>{children}</Ctx.Provider>;
+    void engine.load();
+  }, []);
+  return <>{children}</>;
 }
 
-export const useLibrary = () => useContext(Ctx);
+/** The library on this device. `data` is null until it has loaded. */
+export function useLibrary(): { data: LibraryResponse | null; error: string } {
+  const data = useSyncExternalStore(engine.subscribe, engine.getSnapshot, () => null);
+  return { data, error: engine.loadError };
+}
 
-export async function api<T = unknown>(url: string, init?: RequestInit & { json?: unknown }): Promise<T> {
-  const r = await fetch(url, {
-    ...init,
-    headers: init?.json !== undefined ? { 'Content-Type': 'application/json' } : init?.headers,
-    body: init?.json !== undefined ? JSON.stringify(init.json) : init?.body,
-  });
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((body as { error?: string }).error ?? `Request failed (${r.status})`);
-  return body as T;
+const thumbUrls = new Map<string, string>();
+
+/** A thumbnail's address, read from this device's storage. */
+export function useThumbUrl(id: string) {
+  const [url, setUrl] = useState(() => thumbUrls.get(id) ?? '');
+  useEffect(() => {
+    if (thumbUrls.has(id)) return setUrl(thumbUrls.get(id)!);
+    let live = true;
+    void db.get<Blob>('thumbs', id).then((b) => {
+      if (!b || !live) return;
+      const u = URL.createObjectURL(b);
+      thumbUrls.set(id, u);
+      setUrl(u);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id]);
+  return url;
+}
+
+/** An address for a File loaded on demand (original or compressed copy); undefined while loading, '' if unavailable. */
+export function useFileUrl(load: () => Promise<File | null>, key: string) {
+  const [url, setUrl] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    let made = '';
+    setUrl(undefined);
+    void load()
+      .then((f) => {
+        if (!live) return;
+        made = f ? URL.createObjectURL(f) : '';
+        setUrl(made);
+      })
+      .catch(() => live && setUrl(''));
+    return () => {
+      live = false;
+      if (made) URL.revokeObjectURL(made);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return url;
+}
+
+/** Saves a File to the device: the share sheet where it can save to Photos (phones), else a normal download. */
+export async function saveFile(file: File, name: string, preferShare: boolean): Promise<'shared' | 'downloaded' | 'cancelled'> {
+  const named = new File([file], name, { type: file.type });
+  if (preferShare && window.isSecureContext && navigator.canShare?.({ files: [named] })) {
+    try {
+      await navigator.share({ files: [named] });
+      return 'shared';
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return 'cancelled';
+    }
+  }
+  const u = URL.createObjectURL(named);
+  const a = document.createElement('a');
+  a.href = u;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(u), 60_000);
+  return 'downloaded';
 }
