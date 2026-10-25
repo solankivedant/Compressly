@@ -16,6 +16,7 @@ const PATHS = {
   download: 'M12 4v12M7 11l5 5 5-5M4 20h16',
   close: 'M18 6 6 18M6 6l12 12',
   expand: 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7',
+  doc: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6',
   shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4',
   back: 'M15 18l-6-6 6-6',
   play: 'M7 4l13 8-13 8z',

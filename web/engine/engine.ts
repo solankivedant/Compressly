@@ -4,13 +4,14 @@
 // worker), learning this device's speed, notifications, keeping the screen awake, and replacing originals in folders.
 
 import { formatEta, formatSize } from '@/lib/format';
-import { DEFAULT_SPEEDS, checkPixels, estimateBytes, liveSpeeds, planQueue, speedKey, workPixels } from '@/lib/rules';
+import { DEFAULT_SPEEDS, DOC_EXT, checkPixels, estimateBytes, liveSpeeds, planQueue, speedKey, withFormat, workPixels } from '@/lib/rules';
 import {
   ACTIVE_STATES,
   LANES,
   summarize,
   type JobIn,
   type JobOut,
+  type FormatChoice,
   type Kind,
   type LibraryResponse,
   type MediaItem,
@@ -21,7 +22,7 @@ import {
 import { db, type OriginalLink } from './db';
 import { notify } from './notify';
 import { clearOutputs, readOutput, removeOutput } from './opfs';
-import { probePhoto, probeVideo } from './probe';
+import { probeDoc, probePhoto, probeVideo } from './probe';
 
 // JPEG by default on the web: only a same-type file can be written over the original on a phone.
 const DEFAULT_SETTINGS: Settings = { preset: 'balanced', videoCodec: 'hevc', photoFormat: 'jpeg' };
@@ -29,6 +30,7 @@ const VIDEO_EXT = /\.(mp4|mov|m4v|mkv|webm|3gp)$/i;
 const PHOTO_EXT = /\.(jpe?g|png|webp|avif|heic|heif|gif|bmp)$/i;
 
 export function mediaKind(f: { name: string; type?: string }): Kind | null {
+  if (DOC_EXT.test(f.name)) return 'doc';
   if (f.type?.startsWith('video/') || VIDEO_EXT.test(f.name)) return 'video';
   if (f.type?.startsWith('image/') || PHOTO_EXT.test(f.name)) return 'photo';
   return null;
@@ -182,7 +184,7 @@ class Engine {
         continue;
       }
       try {
-        const p = kind === 'video' ? await probeVideo(file) : await probePhoto(file);
+        const p = kind === 'video' ? await probeVideo(file) : kind === 'doc' ? await probeDoc() : await probePhoto(file);
         const id = crypto.randomUUID();
         const { thumb, kind: _k, ...meta } = p;
         const item: MediaItem = {
@@ -232,7 +234,7 @@ class Engine {
         continue;
       }
       this.originals.set(id, file);
-      this.update(id, { state: 'queued', progress: 0, queuedWith: { ...this.settings }, reason: undefined, result: undefined, attempt: undefined });
+      this.update(id, { state: 'queued', progress: 0, queuedWith: withFormat(x, this.settings), reason: undefined, result: undefined, attempt: undefined });
       n++;
     }
     if (n && !this.slots.some((s) => s.job) && !this.items.some((x) => x.state === 'queued' && !ids.includes(x.id))) {
@@ -314,8 +316,8 @@ class Engine {
     if (!x) return this.afterJob();
     if (m.type === 'done') {
       const r = m.result;
-      if (x.kind === 'photo' && x.startedAt) {
-        this.recordSpeed(speedKey('photo', x.queuedWith ?? this.settings), workPixels(x) / Math.max(0.05, (Date.now() - x.startedAt) / 1000 - 0.3));
+      if (x.kind !== 'video' && x.startedAt) {
+        this.recordSpeed(speedKey(x.kind, x.queuedWith ?? this.settings), workPixels(x) / Math.max(0.05, (Date.now() - x.startedAt) / 1000 - 0.3));
       }
       // Only "not smaller" is a dead end. A copy below the quality bar is still offered, with a "check closely"
       // warning, so the user can zoom in and decide (the web version is for judging results by eye).
@@ -379,7 +381,7 @@ class Engine {
     this.lastStatusAt = now;
     const running = this.items.filter((x) => this.slots.some((s) => s.job === x.id));
     if (!running.length) return;
-    const parts = running.map((x) => (x.kind === 'video' ? `Video ${x.state === 'checking' ? 'quality check' : 'compressing'} ${Math.round(x.progress * 100)}%` : 'Photo'));
+    const parts = running.map((x) => (x.kind === 'video' ? `Video ${x.state === 'checking' ? 'quality check' : 'compressing'} ${Math.round(x.progress * 100)}%` : x.kind === 'doc' ? 'Document' : 'Photo'));
     void notify({
       title: `Compressing ${Math.min(this.batch.total, this.batch.done + 1)} of ${this.batch.total}`,
       body: `${parts.join(' · ')}\n${formatEta(this.queueLeft())} left for everything`,
@@ -395,7 +397,7 @@ class Engine {
     this.lastStatusAt = Date.now();
     void notify({
       title: `${done} of ${total} done`,
-      body: `${kind === 'video' ? 'Video' : 'Photo'} ${saved !== null ? `is in Media · ${formatSize(saved)} smaller` : 'kept as is'}. ${formatEta(this.queueLeft())} left.`,
+      body: `${kind === 'video' ? 'Video' : kind === 'doc' ? 'Document' : 'Photo'} ${saved !== null ? `is in Media · ${formatSize(saved)} smaller` : 'kept as is'}. ${formatEta(this.queueLeft())} left.`,
       tag: 'status',
       silent: true,
       url: '/compress',
@@ -528,6 +530,14 @@ class Engine {
     this.links.clear();
     await Promise.all([clearOutputs(), db.clear('thumbs'), db.clear('handles')]).catch(() => {});
     this.emit();
+  }
+
+  /** One file's own format (Compress page), instead of the one in Settings. */
+  setFormat(id: string, format: FormatChoice) {
+    const x = this.get(id);
+    if (!x || x.state !== 'new') return;
+    const next = { ...x, format: { ...x.format, ...format } };
+    this.update(id, { format: next.format, estimateBytes: estimateBytes(next, this.settings) });
   }
 
   setSettings(patch: Partial<Settings>) {

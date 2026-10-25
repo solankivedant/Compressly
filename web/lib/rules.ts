@@ -75,7 +75,25 @@ export const DEFAULT_SPEEDS: Speeds = {
   'video-check': { pxPerSec: 15e6, samples: 0 },
   'photo-jpeg': { pxPerSec: 8e6, samples: 0 },
   'photo-heic': { pxPerSec: 1e6, samples: 0 },
+  doc: { pxPerSec: 1.5e6, samples: 0 },
 };
+
+/** Settings with this file's own format choice applied. */
+export function withFormat(item: Pick<MediaItem, 'format'>, s: Settings): Settings {
+  return item.format ? { ...s, ...item.format } : s;
+}
+
+/** Office files are zip packages; their pictures sit in a media folder. */
+export const DOC_EXT = /\.(pdf|pptx|docx|xlsx)$/i;
+export const DOC_MIME: Record<string, string> = {
+  pdf: 'application/pdf',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+/** Same quality bar idea as photos: pictures inside documents are re-encoded at this JPEG quality. */
+export const DOC_JPEG_QUALITY: Record<Preset, number> = { high: 88, balanced: 80, max: 70 };
 
 /** How many frames the video quality check compares: about one every 3 s, between 6 and 30. */
 export function checkFrames(durationSec: number): number {
@@ -88,7 +106,9 @@ export function checkPixels(item: Pick<MediaItem, 'width' | 'height' | 'duration
 }
 
 /** Expected compressed size, before compressing (DESIGN §5). */
-export function estimateBytes(item: MediaItem, s: Settings): number {
+export function estimateBytes(item: MediaItem, settings: Settings): number {
+  const s = withFormat(item, settings);
+  if (item.kind === 'doc') return Math.round(item.originalBytes * 0.7);
   if (item.kind === 'photo') return Math.round(item.originalBytes * (1 - PHOTO_FORMATS[s.photoFormat].typicalSaving));
   const { kbps } = videoTargetKbps(s.preset, s.videoCodec, {
     width: item.width,
@@ -100,28 +120,31 @@ export function estimateBytes(item: MediaItem, s: Settings): number {
   return Math.round(Math.min(item.originalBytes, bytes));
 }
 
-const START_COST = { video: 0.5, photo: 0.3 }; // seconds of fixed overhead per job
+const START_COST = { video: 0.5, photo: 0.3, doc: 0.5 }; // seconds of fixed overhead per job
 
 export function speedKey(kind: MediaItem['kind'], s: Settings): SpeedKey {
+  if (kind === 'doc') return 'doc';
   return kind === 'video' ? `video-${s.videoCodec}` : `photo-${s.photoFormat}`;
 }
 
-/** Pixels one pass has to push: every frame for video, one picture for a photo. */
-export function workPixels(item: Pick<MediaItem, 'kind' | 'width' | 'height' | 'fps' | 'durationSec'>): number {
+/** Pixels one pass has to push: every frame for video, one picture for a photo; for documents, their bytes. */
+export function workPixels(item: Pick<MediaItem, 'kind' | 'width' | 'height' | 'fps' | 'durationSec' | 'originalBytes'>): number {
+  if (item.kind === 'doc') return item.originalBytes;
   const frame = item.width * item.height;
   return item.kind === 'video' ? frame * (item.fps ?? 30) * (item.durationSec ?? 0) : frame;
 }
 
-const settingsOf = (item: MediaItem, current: Settings) => (ACTIVE_STATES.includes(item.state) ? (item.queuedWith ?? current) : current);
+const settingsOf = (item: MediaItem, current: Settings) => (ACTIVE_STATES.includes(item.state) ? (item.queuedWith ?? withFormat(item, current)) : withFormat(item, current));
 const rate = (speeds: Speeds, key: SpeedKey) => (speeds[key] ?? DEFAULT_SPEEDS[key]).pxPerSec;
 
 /** Whole-job time in seconds for a file that hasn't started. Assumes no quality retry. */
-export function estimateSeconds(item: MediaItem, s: Settings, speeds: Speeds): number {
+export function estimateSeconds(item: MediaItem, settings: Settings, speeds: Speeds): number {
+  const s = withFormat(item, settings);
   const work = workPixels(item);
   const passes =
     item.kind === 'video'
       ? work / rate(speeds, speedKey('video', s)) + checkPixels(item) / rate(speeds, 'video-check')
-      : work / rate(speeds, speedKey('photo', s));
+      : work / rate(speeds, speedKey(item.kind, s));
   return Math.max(1, passes + START_COST[item.kind]);
 }
 
@@ -151,7 +174,7 @@ export function remainingSeconds(item: MediaItem, current: Settings, speeds: Spe
   }
   if (item.state === 'saving') return 0.5;
   const work = workPixels(item);
-  if (item.kind === 'photo') {
+  if (item.kind !== 'video') {
     const elapsed = item.startedAt ? (now - item.startedAt) / 1000 : 0;
     return Math.max(0.5, estimateSeconds(item, s, speeds) - elapsed);
   }
@@ -184,7 +207,7 @@ export interface QueuePlan {
 export function planQueue(items: MediaItem[], current: Settings, speeds: Speeds, now = Date.now(), extra: MediaItem[] = []): QueuePlan {
   const byId: QueuePlan['byId'] = {};
   let total = 0;
-  for (const kind of ['video', 'photo'] as const) {
+  for (const kind of ['video', 'photo', 'doc'] as const) {
     const slots: number[] = Array(LANES[kind]).fill(0);
     const mine = items.filter((x) => x.kind === kind && ACTIVE_STATES.includes(x.state));
     const running = mine.filter((x) => x.state !== 'queued');

@@ -70,13 +70,14 @@ export default function MediaPage() {
           { value: 'all', label: `All ${data?.items.length ?? ''}` },
           { value: 'video', label: `Videos ${count('video')}` },
           { value: 'photo', label: `Photos ${count('photo')}` },
+          { value: 'doc', label: `Docs ${count('doc')}` },
         ]}
       />
       {error && <div className="banner warn">{error}</div>}
       {note && <div className="banner good">{note}</div>}
       <section className="card" style={{ padding: '4px 12px' }}>
         {items.length ? (
-          <div className="list">
+          <div className="list media-list">
             {items.map((x) => (
               <FileRow
                 key={x.id}

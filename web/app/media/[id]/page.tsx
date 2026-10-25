@@ -9,7 +9,7 @@ import { ScreenHeader } from '@/components/Shell';
 import { ProgressBar, clockTime, stateWords, TrustBadge, useNow } from '@/components/ui';
 import { useFileUrl, useLibrary } from '@/components/useLibrary';
 import { engine } from '@/engine/engine';
-import { formatDate, formatDuration, formatEta, formatSize, savingPct } from '@/lib/format';
+import { formatAfter, formatBefore, formatDate, formatDuration, formatEta, formatSize, savingPct } from '@/lib/format';
 import { estimateSeconds, jobFraction, liveSpeeds, planQueue, qualityWords } from '@/lib/rules';
 import { ACTIVE_STATES } from '@/lib/types';
 
@@ -164,7 +164,7 @@ export default function FileDetail() {
         </section>
       )}
 
-      {origUrl === '' && !item.replaced && (
+      {origUrl === '' && !item.replaced && item.kind !== 'doc' && (
         <div className="banner info row-between">
           <span>
             {item.inFolder ? 'Allow Compressly to open the original again.' : 'Add this file again on the Compress page to compare it.'}
@@ -177,7 +177,7 @@ export default function FileDetail() {
         </div>
       )}
 
-      {hasOutput && origUrl && outUrl ? (
+      {item.kind === 'doc' ? null : hasOutput && origUrl && outUrl ? (
         <Compare
           key={`${id}-${r!.finishedAt}`}
           kind={item.kind}
@@ -201,13 +201,30 @@ export default function FileDetail() {
 
       {/* The few facts people care about; technical ones are folded away (DESIGN §4). */}
       <section className="card stack">
+        <div className="ba">
+          <div>
+            <span className="ba-label">Before</span>
+            <b>{formatBefore(item)}</b>
+            <span className="tabular">{formatSize(item.originalBytes)}</span>
+          </div>
+          <span className="ba-arrow" aria-hidden="true">→</span>
+          <div>
+            <span className="ba-label">After</span>
+            <b>{r ? formatAfter(item, r) : '—'}</b>
+            <span className="tabular">{r ? formatSize(r.outputBytes) : `~${formatSize(item.estimateBytes)}`}</span>
+          </div>
+        </div>
+        {r && r.outputBytes < item.originalBytes && (
+          <span className="saved-tag">
+            <Icon name="check" size={14} /> {formatSize(item.originalBytes - r.outputBytes)} saved
+          </span>
+        )}
         <dl className="facts">
-          <div><dt>Before</dt><dd>{formatSize(item.originalBytes)}</dd></div>
-          {r && <div><dt>After</dt><dd>{formatSize(r.outputBytes)}</dd></div>}
-          {r && <div><dt>Saved</dt><dd>{formatSize(Math.max(0, item.originalBytes - r.outputBytes))}</dd></div>}
-          {r && <div><dt>Quality</dt><dd>{qualityWords(r.ssim)}</dd></div>}
-          <div><dt>Picture size</dt><dd>{item.width} × {item.height}{r ? ' (unchanged)' : ''}</dd></div>
+          {r && item.kind !== 'doc' && <div><dt>Quality</dt><dd>{qualityWords(r.ssim)}</dd></div>}
+          {item.kind !== 'doc' && <div><dt>Picture size</dt><dd>{item.width} × {item.height}{r ? ' (unchanged)' : ''}</dd></div>}
           {item.kind === 'video' && <div><dt>Length</dt><dd>{formatDuration(item.durationSec ?? 0)}</dd></div>}
+          {r?.images && <div><dt>Pictures inside</dt><dd>{r.images.smaller} of {r.images.total} made smaller</dd></div>}
+          {item.kind === 'doc' && r && <div><dt>Text and layout</dt><dd>Unchanged</dd></div>}
         </dl>
         <details className="more">
           <summary>More details</summary>

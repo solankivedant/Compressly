@@ -396,3 +396,61 @@ details.more[open] summary { margin-bottom: 12px; }
 .cmp-full .cmp-side { min-height: 0; height: 100%; grid-template-columns: 1fr 1fr; }
 .cmp-full:not(.is-tall) .cmp-side { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
 .cmp-full .cmp-side figure { grid-template-rows: 1fr auto; }
+
+/* ---------- Phone layout: nothing may be wider than the screen ---------- */
+/* A grid column sized 1fr still grows to fit its widest child; a single over-wide child made the whole page
+   wider than the phone, so the browser zoomed out and the bottom bar landed off-screen. */
+.shell { grid-template-columns: 240px minmax(0, 1fr); }
+.content { min-width: 0; overflow-x: clip; }
+.content > *, .two > *, .stack > *, .cmp-side > *, .compare > * { min-width: 0; }
+.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.btn { white-space: normal; text-align: center; line-height: 1.2; }
+.screen-header h1 { overflow-wrap: anywhere; }
+img, video { max-width: 100%; }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .chip { white-space: normal; max-width: 100%; }
+  .cmp-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .cmp-toolbar .segmented { width: 100%; }
+  .zoom-ctl { justify-content: space-between; }
+  .cmp-transport input[type='range'] { min-width: 0; flex: 1 1 100%; order: 5; }
+}
+
+/* ---------- Before → after, saved tag ---------- */
+.ba { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; }
+.ba > div { display: grid; gap: 2px; padding: 12px; border-radius: var(--r-btn); background: var(--sunken); min-width: 0; }
+.ba b { font-size: 16px; overflow-wrap: anywhere; }
+.ba .ba-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.ba-arrow { font-size: 20px; color: var(--muted); }
+.saved-tag {
+  justify-self: start; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 99px;
+  background: var(--accent); color: var(--on-accent); font-weight: 800; font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Compress: per-file format ---------- */
+.row-extra { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 4px; }
+/* 16px so phones don't zoom in when it's tapped. */
+.mini-select {
+  max-width: 100%; font: inherit; font-size: 16px; padding: 4px 8px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+}
+@media (min-width: 641px) { .mini-select { font-size: 13px; } }
+.thumb-doc {
+  position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-weight: 800;
+  color: var(--on-primary-container); background: var(--primary-container);
+}
+
+/* The saving tag never shrinks or gets pushed off the card; the format menu takes the row's width instead. */
+.saving { flex: none; white-space: nowrap; }
+.row-extra .mini-select { flex: 1 1 100%; width: 100%; min-width: 0; text-overflow: ellipsis; }
+.row-extra .chip { flex: none; }
+
+/* Media rows on phones: Replace and delete get their own line under the file, so nothing is pushed off the card. */
+@media (max-width: 640px) {
+  .media-list .file-row { flex-wrap: wrap; row-gap: 8px; }
+  .media-list .row-link { flex: 1 1 100%; }
+  .media-list .row-actions { flex: 1 1 100%; justify-content: flex-end; }
+}

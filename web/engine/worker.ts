@@ -5,19 +5,23 @@
 
 import encodeAvif from '@jsquash/avif/encode';
 import encodeJpeg from '@jsquash/jpeg/encode';
+import optimisePng from '@jsquash/oxipng/optimise';
+import { unzipSync, zipSync, type Zippable } from 'fflate';
+import { PDFArray, PDFDocument, PDFName, PDFNumber, PDFRawStream, PDFStream, type PDFRef } from 'pdf-lib';
 import {
   ALL_FORMATS,
   BlobSource,
   CanvasSink,
   Conversion,
   Input,
+  MovOutputFormat,
   Mp4OutputFormat,
   Output,
   Quality,
   StreamTarget,
   canEncodeVideo,
 } from 'mediabunny';
-import { PHOTO_FORMATS, PRESETS, checkFrames, videoTargetKbps } from '@/lib/rules';
+import { DOC_JPEG_QUALITY, DOC_MIME, PHOTO_FORMATS, PRESETS, checkFrames, videoTargetKbps } from '@/lib/rules';
 import type { ItemResult, JobIn, JobOut, MediaItem, Settings } from '@/lib/types';
 import { openOutputWriter } from './opfs';
 import { luma, ssim } from './ssim';
@@ -46,7 +50,12 @@ self.onmessage = async (e: MessageEvent<JobIn>) => {
     post({ type: 'stage', id: m.id, state, progress });
   };
   try {
-    const result = m.item.kind === 'video' ? await compressVideo(m.item, m.file, m.settings, stage, job) : await compressPhoto(m.item, m.file, m.settings, stage);
+    const result =
+      m.item.kind === 'video'
+        ? await compressVideo(m.item, m.file, m.settings, stage, job)
+        : m.item.kind === 'doc'
+          ? await compressDoc(m.item, m.file, m.settings, stage)
+          : await compressPhoto(m.item, m.file, m.settings, stage);
     if (job.cancelled) throw new Cancelled();
     post({ type: 'done', id: m.id, result });
   } catch (err) {
@@ -76,11 +85,18 @@ async function pickCodec(s: Settings, item: MediaItem, kbps: number) {
   throw new Error(`This device can't encode ${item.width}×${item.height} video in the browser.`);
 }
 
+/** The output keeps the original's file type where it can (MOV stays MOV, M4V stays M4V), so it can replace it. */
+function videoContainer(item: MediaItem) {
+  if (item.ext === 'mov') return { ext: 'mov', mime: 'video/quicktime', format: () => new MovOutputFormat({ fastStart: false }) };
+  return { ext: item.ext === 'm4v' ? 'm4v' : 'mp4', mime: 'video/mp4', format: () => new Mp4OutputFormat({ fastStart: false }) };
+}
+
 async function encodeOnce(item: MediaItem, file: File, codec: 'hevc' | 'avc', kbps: number, stage: Stage, job: { conversion?: Conversion }) {
   const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
-  const writer = await openOutputWriter(item.id, 'mp4');
+  const box = videoContainer(item);
+  const writer = await openOutputWriter(item.id, box.ext);
   try {
-    const output = new Output({ format: new Mp4OutputFormat({ fastStart: false }), target: new StreamTarget(writer.stream as WritableStream) });
+    const output = new Output({ format: box.format(), target: new StreamTarget(writer.stream as WritableStream) });
     const conversion = await Conversion.init({
       input,
       output,
@@ -167,7 +183,7 @@ async function compressVideo(item: MediaItem, file: File, s: Settings, stage: St
     bytes = r.bytes;
     if (r.audioNote && !notes.includes(r.audioNote)) notes.push(r.audioNote);
     stage('checking', 0);
-    score = await measureVideo(item, file, await readOutputFile(item.id, 'mp4', 'video/mp4'), stage);
+    score = await measureVideo(item, file, await readOutputFile(item.id, videoContainer(item).ext, videoContainer(item).mime), stage);
     if (score >= minSsim || attempt === 1) break;
     notes.push(`First try scored ${score.toFixed(4)} (needs ${minSsim}), so it was retried at +25% bitrate.`);
     kbps = Math.round(kbps * 1.25);
@@ -177,8 +193,8 @@ async function compressVideo(item: MediaItem, file: File, s: Settings, stage: St
   stage('saving', 0.5);
   return {
     outputBytes: bytes,
-    outputExt: 'mp4',
-    outputMime: 'video/mp4',
+    outputExt: videoContainer(item).ext,
+    outputMime: videoContainer(item).mime,
     ssim: score,
     minSsim,
     preset: s.preset,
@@ -249,4 +265,169 @@ async function compressPhoto(item: MediaItem, file: File, s: Settings, stage: St
   writer.writeAll(new Uint8Array(data));
   const outputBytes = writer.close();
   return { outputBytes, outputExt: ext, outputMime: mime, ssim: score, minSsim, preset: s.preset, method, seconds: (Date.now() - started) / 1000, notes, finishedAt: Date.now() };
+}
+
+// ---------- Documents ----------
+//
+// PDF and Office files keep their text, layout and pages exactly; only the pictures inside are recompressed,
+// at the same pixel size. Each picture must pass the preset's quality bar and come out smaller, or it is kept as is.
+
+type Picture = { bytes: Uint8Array; score: number };
+
+/**
+ * The EXIF orientation of a JPEG (1 = as stored). Documents draw their pictures as stored, but browsers can only
+ * decode them turned upright, so a turned picture is left alone rather than re-encoded sideways.
+ */
+function exifOrientation(b: Uint8Array): number {
+  let i = 2;
+  while (i + 4 < b.length && b[i] === 0xff) {
+    const marker = b[i + 1];
+    const len = (b[i + 2] << 8) | b[i + 3];
+    if (marker === 0xe1 && b[i + 4] === 0x45 && b[i + 5] === 0x78 && b[i + 6] === 0x69 && b[i + 7] === 0x66) {
+      const t = i + 10; // TIFF header
+      const le = b[t] === 0x49;
+      const u16 = (o: number) => (le ? b[o] | (b[o + 1] << 8) : (b[o] << 8) | b[o + 1]);
+      const u32 = (o: number) => (le ? u16(o) | (u16(o + 2) << 16) : (u16(o) << 16) | u16(o + 2));
+      const ifd = t + u32(t + 4);
+      for (let k = 0, n = u16(ifd); k < n; k++) {
+        const e = ifd + 2 + k * 12;
+        if (u16(e) === 0x0112) return u16(e + 8);
+      }
+      return 1;
+    }
+    if (marker === 0xda) break; // image data starts; no EXIF before it
+    i += 2 + len;
+  }
+  return 1;
+}
+
+/** A JPEG picture re-encoded smaller at the same size, or null to keep it as it is. */
+async function smallerJpeg(bytes: Uint8Array, s: Settings, gray = false): Promise<Picture | null> {
+  if (exifOrientation(bytes) !== 1) return null;
+  let img: ImageData;
+  try {
+    img = await pixels(new Blob([bytes as BlobPart], { type: 'image/jpeg' }));
+  } catch {
+    return null; // a kind of JPEG this browser can't read (e.g. CMYK): leave it alone
+  }
+  // The preset's quality first; if a picture misses the bar, one retry a step higher (like photos and videos).
+  for (const q of [DOC_JPEG_QUALITY[s.preset], Math.min(95, DOC_JPEG_QUALITY[s.preset] + 12)]) {
+    const out = new Uint8Array(await encodeJpeg(img, { quality: q, ...(gray ? { color_space: 1 } : {}) }));
+    if (out.byteLength > bytes.byteLength * 0.95) return null;
+    const back = await pixels(new Blob([out as BlobPart], { type: 'image/jpeg' }));
+    if (back.width !== img.width || back.height !== img.height) return null;
+    const score = ssim(luma(img.data, img.width, img.height), luma(back.data, back.width, back.height), img.width, img.height);
+    if (score >= PRESETS[s.preset].minSsim) return { bytes: out, score };
+  }
+  return null;
+}
+
+/** PNG made smaller without changing a single pixel. */
+async function smallerPng(bytes: Uint8Array): Promise<Picture | null> {
+  try {
+    const out = new Uint8Array(await optimisePng(bytes.slice().buffer, { level: 2 }));
+    return out.byteLength < bytes.byteLength * 0.95 ? { bytes: out, score: 1 } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function compressDoc(item: MediaItem, file: File, s: Settings, stage: Stage): Promise<ItemResult> {
+  const started = Date.now();
+  const src = new Uint8Array(await file.arrayBuffer());
+  stage('compressing', 0.05);
+  const r = item.ext === 'pdf' ? await compressPdf(src, s, stage) : await compressOffice(src, s, stage);
+  stage('saving', 0.5);
+  const writer = await openOutputWriter(item.id, item.ext);
+  writer.writeAll(r.bytes);
+  const outputBytes = writer.close();
+  const notes = [
+    r.total ? `${r.smaller} of ${r.total} pictures made smaller; text and layout are unchanged.` : 'No pictures inside; only the file packaging was tightened.',
+  ];
+  return {
+    outputBytes,
+    outputExt: item.ext,
+    outputMime: DOC_MIME[item.ext] ?? file.type,
+    images: { total: r.total, smaller: r.smaller },
+    ssim: r.score,
+    minSsim: PRESETS[s.preset].minSsim,
+    preset: s.preset,
+    method: r.total ? 'Pictures recompressed · PNG lossless' : 'Repacked',
+    seconds: (Date.now() - started) / 1000,
+    notes,
+    finishedAt: Date.now(),
+  };
+}
+
+/** PPTX / DOCX / XLSX are zip packages; pictures live in ppt/media, word/media or xl/media. */
+async function compressOffice(src: Uint8Array, s: Settings, stage: Stage) {
+  let files: Record<string, Uint8Array>;
+  try {
+    files = unzipSync(src);
+  } catch {
+    throw new Error("This file couldn't be opened. Old .ppt / .doc / .xls files aren't supported; save it as .pptx / .docx / .xlsx first.");
+  }
+  const pics = Object.keys(files).filter((n) => /\/media\/[^/]+\.(jpe?g|png)$/i.test(n));
+  let smaller = 0;
+  let score = 1;
+  for (let i = 0; i < pics.length; i++) {
+    const name = pics[i];
+    const better = /\.png$/i.test(name) ? await smallerPng(files[name]) : await smallerJpeg(files[name], s);
+    if (better) {
+      files[name] = better.bytes;
+      smaller++;
+      score = Math.min(score, better.score);
+    }
+    stage('compressing', 0.05 + (0.85 * (i + 1)) / pics.length);
+  }
+  // [Content_Types].xml first, as Office expects; pictures stored (already compressed), the rest deflated hard.
+  const order = Object.keys(files).sort((a, b) => (a === '[Content_Types].xml' ? -1 : b === '[Content_Types].xml' ? 1 : 0));
+  const zip: Zippable = {};
+  for (const n of order) zip[n] = [files[n], { level: /\.(jpe?g|png|gif|mp4|m4a|mp3|wav|wmv)$/i.test(n) ? 0 : 9 }];
+  return { bytes: zipSync(zip), total: pics.length, smaller, score };
+}
+
+/** PDF: JPEG pictures (the big ones in scans and photos) are recompressed in place; everything else is kept. */
+async function compressPdf(src: Uint8Array, s: Settings, stage: Stage) {
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(src, { updateMetadata: false });
+  } catch (e) {
+    throw new Error(/encrypt/i.test(String(e)) ? 'This PDF is password-protected, so it is kept as is.' : "This PDF couldn't be opened.");
+  }
+  const N = (n: string) => PDFName.of(n);
+  const pics: [PDFRef, PDFRawStream][] = [];
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue;
+    const d = obj.dict;
+    if (d.get(N('Subtype')) !== N('Image')) continue;
+    const f = d.lookup(N('Filter'));
+    const isJpeg = f === N('DCTDecode') || (f instanceof PDFArray && f.size() === 1 && f.lookup(0) === N('DCTDecode'));
+    if (isJpeg && !d.get(N('Decode')) && Number(d.lookup(N('BitsPerComponent'))?.toString() ?? 8) === 8) pics.push([ref, obj]);
+  }
+  let smaller = 0;
+  let score = 1;
+  for (let i = 0; i < pics.length; i++) {
+    const [ref, obj] = pics[i];
+    const d = obj.dict;
+    const cs = d.lookup(N('ColorSpace'));
+    // Only plain gray or colour pictures (directly or through an ICC profile); CMYK and others are left alone.
+    let comps = cs === N('DeviceGray') ? 1 : cs === N('DeviceRGB') ? 3 : 0;
+    if (cs instanceof PDFArray && cs.lookup(0) === N('ICCBased')) {
+      const icc = cs.lookup(1);
+      if (icc instanceof PDFStream) comps = Number(icc.dict.lookup(N('N'))?.toString() ?? 0);
+    }
+    if (comps === 1 || comps === 3) {
+      const better = await smallerJpeg(obj.contents, s, comps === 1);
+      if (better) {
+        d.set(N('Length'), PDFNumber.of(better.bytes.byteLength));
+        doc.context.assign(ref, PDFRawStream.of(d, better.bytes));
+        smaller++;
+        score = Math.min(score, better.score);
+      }
+    }
+    stage('compressing', 0.05 + (0.85 * (i + 1)) / pics.length);
+  }
+  const bytes = await doc.save({ useObjectStreams: true });
+  return { bytes, total: pics.length, smaller, score };
 }

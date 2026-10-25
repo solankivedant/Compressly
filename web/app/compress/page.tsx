@@ -10,7 +10,7 @@ import { useLibrary } from '@/components/useLibrary';
 import { engine, mediaKind } from '@/engine/engine';
 import { canOpenFolder, canPickFiles, droppedFiles, pickFiles, pickFolder } from '@/engine/folder';
 import { formatEta, formatEtaShort, formatSize } from '@/lib/format';
-import { DEFAULT_SPEEDS, PRESETS, estimateSeconds, jobFraction, liveSpeeds, planQueue, speedKey } from '@/lib/rules';
+import { DEFAULT_SPEEDS, PRESETS, estimateSeconds, withFormat, jobFraction, liveSpeeds, planQueue, speedKey } from '@/lib/rules';
 import { ACTIVE_STATES, type MediaItem, type Preset, type Settings } from '@/lib/types';
 
 interface Adding {
@@ -63,7 +63,7 @@ export default function CompressPage() {
     if (!files.length) return;
     setError('');
     const media = files.filter((f) => mediaKind(f));
-    if (media.length < files.length) setError('Some files were skipped: only photos and videos can be added.');
+    if (media.length < files.length) setError('Some files were skipped: only photos, videos, PDF, PPTX, DOCX and XLSX can be added.');
     setAdding({ total: media.length, done: 0 });
     const p = await engine.add(media.map((file) => ({ file })), { fromPhone: dev.phone, onEach: (done) => setAdding({ total: media.length, done }) });
     setProblems(p);
@@ -73,7 +73,7 @@ export default function CompressPage() {
   // Files picked or dropped with a link back to them, so the compressed copy can replace the original later.
   const addLinked = async (found: Awaited<ReturnType<typeof pickFiles>>) => {
     if (!found) return;
-    if (!found.length) return setError('Only photos and videos can be added.');
+    if (!found.length) return setError('Only photos, videos, PDF and Office files can be added.');
     setError('');
     setAdding({ total: found.length, done: 0 });
     const p = await engine.add(found, { fromPhone: dev.phone, onEach: (done) => setAdding({ total: found.length, done }) });
@@ -141,12 +141,12 @@ export default function CompressPage() {
           void pickFiles().then(addLinked);
         }}
       >
-        <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => void addFiles(e.target.files).then(() => (e.target.value = ''))} />
+        <input ref={input} type="file" accept="image/*,video/*,.pdf,.pptx,.docx,.xlsx,application/pdf" multiple hidden onChange={(e) => void addFiles(e.target.files).then(() => (e.target.value = ''))} />
         <span className="drop-icon">
           <Icon name={dev.phone ? 'media' : 'upload'} size={24} />
         </span>
-        <strong>{dev.phone ? 'Choose photos and videos' : 'Drop photos and videos here'}</strong>
-        <span className="muted">{dev.phone ? 'Nothing is uploaded' : 'or click to choose · nothing is uploaded'}</span>
+        <strong>{dev.phone ? 'Choose files' : 'Drop files here'}</strong>
+        <span className="muted">Photos, videos, PDF, PPT, Word, Excel · nothing is uploaded</span>
       </label>
 
       <div className="row-between" style={{ justifyContent: 'center', gap: 8 }}>
@@ -282,9 +282,12 @@ export default function CompressPage() {
                     gone(x) ? (
                       <span className="eta">Pick this file again to compress it</span>
                     ) : (
-                      <span className="eta">
-                        <Icon name="clock" size={13} />
-                        takes {formatEtaShort(est(x))}
+                      <span className="row-extra">
+                        {settings && <FormatPicker item={x} settings={settings} />}
+                        <span className="eta">
+                          <Icon name="clock" size={13} />
+                          {formatEtaShort(est(x))}
+                        </span>
                       </span>
                     )
                   }
@@ -336,5 +339,33 @@ export default function CompressPage() {
         <p className="trust">All done. Your files are in Media.</p>
       )}
     </>
+  );
+}
+
+/** One file's format before compressing; follows Settings until changed. Documents keep their own format. */
+function FormatPicker({ item, settings }: { item: MediaItem; settings: Settings }) {
+  if (item.kind === 'doc') return <span className="chip small">{item.ext.toUpperCase()} stays {item.ext.toUpperCase()}</span>;
+  const s = withFormat(item, settings);
+  const keep = item.ext === 'mov' ? 'MOV' : item.ext === 'm4v' ? 'M4V' : 'MP4';
+  return item.kind === 'photo' ? (
+    <select
+      className="mini-select"
+      aria-label={`Format for ${item.name}`}
+      value={s.photoFormat}
+      onChange={(e) => engine.setFormat(item.id, { photoFormat: e.target.value as Settings['photoFormat'] })}
+    >
+      <option value="jpeg">Optimised JPEG · can replace</option>
+      <option value="heic">HEIC · smaller, new file</option>
+    </select>
+  ) : (
+    <select
+      className="mini-select"
+      aria-label={`Format for ${item.name}`}
+      value={s.videoCodec}
+      onChange={(e) => engine.setFormat(item.id, { videoCodec: e.target.value as Settings['videoCodec'] })}
+    >
+      <option value="hevc">{keep} · HEVC (smaller)</option>
+      <option value="h264">{keep} · H.264 (plays everywhere)</option>
+    </select>
   );
 }

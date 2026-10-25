@@ -50,3 +50,19 @@ export function formatEtaShort(sec: number): string {
 export function compressedName(item: { name: string; ext: string; result?: { outputExt: string } }): string {
   return `${item.name.replace(/\.[^.]+$/, '')}-compressed.${item.result?.outputExt ?? item.ext}`;
 }
+
+const CODEC_NAMES: Record<string, string> = { AVC: 'H.264', HEVC: 'HEVC', VP9: 'VP9', AV1: 'AV1', VP8: 'VP8' };
+const extLabel = (ext: string) => (ext === 'jpg' ? 'JPEG' : ext.toUpperCase());
+
+/** "MP4 · H.264", "JPEG", "PDF": the original's format in plain words. */
+export function formatBefore(item: { kind: string; ext: string; sourceCodec?: string }): string {
+  if (item.kind !== 'video') return extLabel(item.ext);
+  return `${extLabel(item.ext)} · ${CODEC_NAMES[item.sourceCodec ?? ''] ?? item.sourceCodec ?? '?'}`;
+}
+
+/** The compressed copy's format, e.g. "MOV · HEVC" or "AVIF (HEIC)". */
+export function formatAfter(item: { kind: string }, r: { outputExt: string; method: string }): string {
+  if (item.kind === 'video') return `${extLabel(r.outputExt)} · ${r.method.startsWith('HEVC') ? 'HEVC' : 'H.264'}`;
+  if (r.outputExt === 'avif') return 'AVIF (HEIC)';
+  return extLabel(r.outputExt);
+}

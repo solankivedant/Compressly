@@ -25,7 +25,7 @@ export async function replaceOnDevice(item: MediaItem): Promise<string> {
       );
     }
     if (!sameType(item.ext, r.outputExt)) {
-      throw new Error('This photo was made in a different format, so it cannot overwrite the original. Remove it and compress it again (photos now use JPEG).');
+      throw new Error(`The compressed copy is ${r.outputExt.toUpperCase()}, so it can't overwrite this ${item.ext.toUpperCase()}. Remove it and compress it again with the same format.`);
     }
     const handle = await pickOne(item.kind);
     if (!handle) return '';

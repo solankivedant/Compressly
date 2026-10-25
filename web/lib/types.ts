@@ -1,6 +1,7 @@
 // Shapes shared by the pages and the in-browser compression engine.
 
-export type Kind = 'video' | 'photo';
+/** `doc`: PDF and Office files (PPTX, DOCX, XLSX), made smaller by recompressing the pictures inside them. */
+export type Kind = 'video' | 'photo' | 'doc';
 export type Preset = 'high' | 'balanced' | 'max';
 export type VideoCodec = 'hevc' | 'h264';
 /** The app's two photo modes. On the web, HEIC is stood in for by AVIF (browsers can't show HEIC). */
@@ -26,8 +27,13 @@ export interface Settings {
   photoFormat: PhotoFormat;
 }
 
+/** A file's own choice of format, set on the Compress page; anything left out follows Settings. */
+export type FormatChoice = Partial<Pick<Settings, 'photoFormat' | 'videoCodec'>>;
+
 export interface ItemResult {
   outputBytes: number;
+  /** Documents: pictures inside the file, and how many of them were made smaller. */
+  images?: { total: number; smaller: number };
   outputExt: string;
   outputMime: string;
   ssim: number;
@@ -59,6 +65,8 @@ export interface MediaItem {
   audioKbps?: number;
 
   estimateBytes: number;
+  /** This file's format choice, overriding Settings. */
+  format?: FormatChoice;
   state: ItemState;
   progress: number; // 0..1 within the current state
   queuedWith?: Settings;
@@ -90,13 +98,13 @@ export interface Summary {
  * Each stage of work has its own measured speed: the video encoders, the video quality check,
  * and the two photo formats (a photo job is one quick step).
  */
-export type SpeedKey = 'video-hevc' | 'video-h264' | 'video-check' | 'photo-jpeg' | 'photo-heic';
+export type SpeedKey = 'video-hevc' | 'video-h264' | 'video-check' | 'photo-jpeg' | 'photo-heic' | 'doc';
 
-/** Measured throughput on this device, in pixels per second. */
+/** Measured throughput on this device, in pixels per second (bytes per second for documents). */
 export type Speeds = Record<SpeedKey, { pxPerSec: number; samples: number }>;
 
 /** How many files of each kind run at the same time. */
-export const LANES: Record<Kind, number> = { video: 1, photo: 2 };
+export const LANES: Record<Kind, number> = { video: 1, photo: 2, doc: 1 };
 
 export interface LibraryResponse {
   items: MediaItem[];

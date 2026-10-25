@@ -4,7 +4,12 @@
 // compressed copy can later replace it. Only some browsers allow this (Chrome and Edge on computers today).
 
 import type { OriginalLink } from './db';
+import { DOC_MIME } from '@/lib/rules';
+import type { Kind } from '@/lib/types';
 import { mediaKind } from './engine';
+
+/** PDF and Office files, for the file pickers. */
+const DOC_ACCEPT: Record<string, string[]> = Object.fromEntries(Object.entries(DOC_MIME).map(([ext, mime]) => [mime, [`.${ext}`]]));
 
 type DirPicker = (o?: { mode?: 'read' | 'readwrite'; id?: string }) => Promise<FileSystemDirectoryHandle>;
 
@@ -43,7 +48,7 @@ export async function pickFiles(): Promise<{ file: File; link: OriginalLink; pat
     handles = await (window as unknown as { showOpenFilePicker: FilePicker }).showOpenFilePicker({
       multiple: true,
       id: 'compressly-files',
-      types: [{ description: 'Photos and videos', accept: { 'image/*': [], 'video/*': [] } }],
+      types: [{ description: 'Photos, videos and documents', accept: { 'image/*': [], 'video/*': [], ...DOC_ACCEPT } }],
     });
   } catch {
     return null; // cancelled
@@ -52,12 +57,18 @@ export async function pickFiles(): Promise<{ file: File; link: OriginalLink; pat
 }
 
 /** One file of the given kind, picked to link a compressed copy back to its original. */
-export async function pickOne(kind: 'video' | 'photo'): Promise<FileSystemFileHandle | null> {
+export async function pickOne(kind: Kind): Promise<FileSystemFileHandle | null> {
   try {
     const [h] = await (window as unknown as { showOpenFilePicker: FilePicker }).showOpenFilePicker({
       multiple: false,
       id: 'compressly-files',
-      types: [{ description: kind === 'video' ? 'Videos' : 'Photos', accept: kind === 'video' ? { 'video/*': [] } : { 'image/*': [] } }],
+      types: [
+        kind === 'video'
+          ? { description: 'Videos', accept: { 'video/*': [] } }
+          : kind === 'doc'
+            ? { description: 'Documents', accept: DOC_ACCEPT }
+            : { description: 'Photos', accept: { 'image/*': [] } },
+      ],
     });
     return h ?? null;
   } catch {

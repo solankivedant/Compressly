@@ -3,7 +3,7 @@
 import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
 
 export interface Probe {
-  kind: 'video' | 'photo';
+  kind: 'video' | 'photo' | 'doc';
   width: number;
   height: number;
   durationSec?: number;
@@ -68,6 +68,11 @@ export async function probeVideo(file: File): Promise<Probe> {
   } finally {
     input.dispose();
   }
+}
+
+/** Documents have no picture size of their own; their pictures are looked at while compressing. */
+export async function probeDoc(): Promise<Probe> {
+  return { kind: 'doc', width: 0, height: 0, thumb: null };
 }
 
 export async function probePhoto(file: File): Promise<Probe> {

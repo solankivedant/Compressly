@@ -13,6 +13,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // App-like: the compare view has its own pinch zoom, and the page itself shouldn't zoom.
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: 'cover',
   themeColor: '#ECEEF2',
 };

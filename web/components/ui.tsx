@@ -74,8 +74,9 @@ export function Thumb({ item, size = 48 }: { item: MediaItem; size?: number }) {
     <span className="thumb" style={{ width: size, height: size }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {url && <img src={url} alt="" loading="lazy" />}
+      {item.kind === 'doc' && <span className="thumb-doc">{item.ext.toUpperCase()}</span>}
       <span className="thumb-kind">
-        <Icon name={item.kind === 'video' ? 'video' : 'photo'} size={12} />
+        <Icon name={item.kind === 'video' ? 'video' : item.kind === 'doc' ? 'doc' : 'photo'} size={12} />
         {item.kind === 'video' && item.durationSec ? formatDuration(item.durationSec) : null}
       </span>
     </span>
@@ -135,7 +136,9 @@ export function FileRow({
         {extra}
       </span>
       {item.state !== 'notWorthIt' && item.state !== 'failed' && pct > 0 && (
-        <span className={`saving ${item.state === 'freed' ? 'saving-freed' : ''}`}>−{pct}%</span>
+        <span className={`saving ${item.state === 'freed' ? 'saving-freed' : ''}`}>
+          −{formatSize(item.originalBytes - after)}
+        </span>
       )}
     </>
   );
