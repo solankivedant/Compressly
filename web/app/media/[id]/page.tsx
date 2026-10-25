@@ -1,16 +1,15 @@
 'use client';
 
-import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useDevice } from '@/components/device';
+import { replaceOnDevice } from '@/components/replace';
 import Compare from '@/components/Compare';
 import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
 import { ProgressBar, clockTime, stateWords, TrustBadge, useNow } from '@/components/ui';
-import { saveFile, useFileUrl, useLibrary } from '@/components/useLibrary';
+import { useFileUrl, useLibrary } from '@/components/useLibrary';
 import { engine } from '@/engine/engine';
-import { compressedName, formatDate, formatDuration, formatEta, formatSize, savingPct } from '@/lib/format';
+import { formatDate, formatDuration, formatEta, formatSize, savingPct } from '@/lib/format';
 import { estimateSeconds, jobFraction, liveSpeeds, planQueue, qualityWords } from '@/lib/rules';
 import { ACTIVE_STATES } from '@/lib/types';
 
@@ -21,7 +20,6 @@ export default function FileDetail() {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [askTick, setAskTick] = useState(0);
-  const dev = useDevice();
   const item = data?.items.find((x) => x.id === id);
   const now = useNow(!!item && ACTIVE_STATES.includes(item.state));
   // Both copies are read from this device's storage.
@@ -59,22 +57,13 @@ export default function FileDetail() {
       const r = await engine.enqueue([id]);
       if (r.missing.length) throw new Error('The original is no longer available on this page. Add the file again to compress it.');
     });
-  const canReplace = engine.canReplace(id);
   // Where the original lives, as far as the browser tells us (a folder path, or just the file's name).
   const where = item.folderPath?.includes('/') ? item.folderPath.replace(/\/[^/]+$/, '') : 'its original place';
   const lowQuality = !!r && r.ssim < r.minSsim;
-  const saveCopy = () =>
-    act(async () => {
-      const f = await engine.output(id);
-      if (!f) throw new Error('The compressed copy is missing. Compress the file again.');
-      const how = await saveFile(f, compressedName(item), true);
-      if (how !== 'cancelled') setNote('Saved. Delete the original from your gallery to free the space.');
-    });
   const replace = () =>
     act(async () => {
-      if (!confirm(`Replace "${item.name}" on your device with the ${savingPct(item.originalBytes, r!.outputBytes)}% smaller copy? This can't be undone.`)) return;
-      await engine.replaceInFolder(id);
-      setNote(`Replaced in ${where}. No extra copy is kept, so the space is freed.`);
+      const msg = await replaceOnDevice(item);
+      if (msg) setNote(msg);
     });
 
   return (
@@ -119,50 +108,20 @@ export default function FileDetail() {
             </span>
           </div>
 
-          {item.state === 'ready' && (
-            <div className="banner good">
-              <Icon name="checkCircle" size={14} /> Compressed and saved in <strong>Media</strong>.{' '}
-              {lowQuality ? 'Some fine detail may be softer: zoom in below before replacing.' : 'Compare below, then replace the original.'}
-            </div>
-          )}
-          {item.state === 'freed' && (
+          {item.replaced && (
             <span className="chip accent" style={{ justifySelf: 'start' }}>
-              <Icon name="checkCircle" size={14} /> {item.replaced ? `Replaced in ${where}` : 'Done'} · saved {formatSize(item.originalBytes - r.outputBytes)}
+              <Icon name="checkCircle" size={14} /> Replaced in {where} · saved {formatSize(item.originalBytes - r.outputBytes)}
             </span>
           )}
 
           {(item.state === 'ready' || item.state === 'freed') && !item.replaced && (
-            <div className="stack" style={{ gap: 8 }}>
-              {canReplace ? (
-                <button className="btn primary block" onClick={() => void replace()}>
-                  <Icon name="compress" size={18} /> Replace original · free {formatSize(item.originalBytes - r.outputBytes)}
-                </button>
-              ) : dev.ios ? (
-                <>
-                  <button className="btn primary block" onClick={() => void saveCopy()}>
-                    <Icon name="upload" size={18} /> Save to Photos
-                  </button>
-                  <span className="muted" style={{ fontSize: 13, textAlign: 'center' }}>
-                    iPhone browsers can&apos;t replace files. Delete the original afterwards to free the space.
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Link href="/compress" className="btn primary block">
-                    <Icon name="upload" size={18} /> Add it again to replace the original
-                  </Link>
-                  <span className="muted" style={{ fontSize: 13, textAlign: 'center' }}>
-                    {item.inFolder
-                      ? 'This photo became a different file type. Choose "Optimised JPEG" in Settings and compress it again.'
-                      : 'This file was added without permission to change it. Pick it again on Compress and allow access.'}
-                  </span>
-                </>
-              )}
-              {item.state === 'ready' && (
-                <button className="btn ghost small" style={{ justifySelf: 'center' }} onClick={() => void decide('keepOriginal')}>
-                  Keep original instead
-                </button>
-              )}
+            <div className="two">
+              <button className="btn block" onClick={() => void decide('keepOriginal')}>
+                Keep original
+              </button>
+              <button className="btn primary block" onClick={() => void replace()}>
+                <Icon name="check" size={18} /> Replace in device
+              </button>
             </div>
           )}
           {item.state === 'notWorthIt' && (

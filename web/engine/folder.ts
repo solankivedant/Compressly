@@ -51,6 +51,20 @@ export async function pickFiles(): Promise<{ file: File; link: OriginalLink; pat
   return linked(handles);
 }
 
+/** One file of the given kind, picked to link a compressed copy back to its original. */
+export async function pickOne(kind: 'video' | 'photo'): Promise<FileSystemFileHandle | null> {
+  try {
+    const [h] = await (window as unknown as { showOpenFilePicker: FilePicker }).showOpenFilePicker({
+      multiple: false,
+      id: 'compressly-files',
+      types: [{ description: kind === 'video' ? 'Videos' : 'Photos', accept: kind === 'video' ? { 'video/*': [] } : { 'image/*': [] } }],
+    });
+    return h ?? null;
+  } catch {
+    return null; // cancelled
+  }
+}
+
 /** Files dropped on the page, with links where the browser gives them (Chrome / Edge). Null if it doesn't. */
 export async function droppedFiles(dt: DataTransfer): Promise<{ file: File; link: OriginalLink; path: string }[] | null> {
   const items = Array.from(dt.items).filter((i) => i.kind === 'file');

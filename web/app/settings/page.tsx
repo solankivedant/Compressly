@@ -81,7 +81,7 @@ export default function SettingsPage() {
                   current={s.photoFormat}
                   onPick={(photoFormat) => void save({ photoFormat })}
                   title={PHOTO_FORMATS[f].label}
-                  desc={`Saves about ${Math.round(PHOTO_FORMATS[f].typicalSaving * 100)}% · ${f === 'jpeg' ? 'can replace the original' : 'saved as a new file'}`}
+                  desc={`Saves about ${Math.round(PHOTO_FORMATS[f].typicalSaving * 100)}% · ${f === 'jpeg' ? 'can replace the original' : "can't replace originals"}`}
                 />
               ))}
             </div>

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import Icon from '@/components/Icon';
+import { replaceOnDevice } from '@/components/replace';
 import { ScreenHeader } from '@/components/Shell';
 import { Empty, FileRow, Segmented, stateWords } from '@/components/ui';
 import { useLibrary } from '@/components/useLibrary';
@@ -28,6 +29,7 @@ export default function MediaPage() {
   const { data } = useLibrary();
   const [tab, setTab] = useState<Tab>('all');
   const [error, setError] = useState('');
+  const [note, setNote] = useState('');
   const items = (data?.items ?? []).filter((x) => tab === 'all' || x.kind === tab);
   const count = (k: Kind) => data?.items.filter((x) => x.kind === k).length ?? 0;
   const total = items.reduce((n, x) => n + x.originalBytes, 0);
@@ -36,10 +38,10 @@ export default function MediaPage() {
     if (confirm(`Remove "${x.name}" from Compressly? The original on your device is not touched.`)) void engine.remove(x.id);
   };
   const replace = async (x: MediaItem) => {
-    if (!confirm(`Replace "${x.name}" on your device with the smaller copy? This can't be undone.`)) return;
     setError('');
+    setNote('');
     try {
-      await engine.replaceInFolder(x.id);
+      setNote(await replaceOnDevice(x));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -71,6 +73,7 @@ export default function MediaPage() {
         ]}
       />
       {error && <div className="banner warn">{error}</div>}
+      {note && <div className="banner good">{note}</div>}
       <section className="card" style={{ padding: '4px 12px' }}>
         {items.length ? (
           <div className="list">
@@ -81,7 +84,7 @@ export default function MediaPage() {
                 extra={<span className={`chip small ${CHIP[x.state] ?? 'primary'}`} style={{ justifySelf: 'start', marginTop: 4 }}>{SHORT[x.state] ?? stateWords(x.state)}</span>}
                 trailing={
                   <span className="row-actions">
-                    {engine.canReplace(x.id) && (
+                    {(x.state === 'ready' || x.state === 'freed') && !x.replaced && (
                       <button className="btn primary small" aria-label={`Replace ${x.name}`} onClick={() => void replace(x)}>
                         Replace
                       </button>

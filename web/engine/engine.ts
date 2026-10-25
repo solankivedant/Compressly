@@ -23,7 +23,8 @@ import { notify } from './notify';
 import { clearOutputs, readOutput, removeOutput } from './opfs';
 import { probePhoto, probeVideo } from './probe';
 
-const DEFAULT_SETTINGS: Settings = { preset: 'balanced', videoCodec: 'hevc', photoFormat: 'heic' };
+// JPEG by default on the web: only a same-type file can be written over the original on a phone.
+const DEFAULT_SETTINGS: Settings = { preset: 'balanced', videoCodec: 'hevc', photoFormat: 'jpeg' };
 const VIDEO_EXT = /\.(mp4|mov|m4v|mkv|webm|3gp)$/i;
 const PHOTO_EXT = /\.(jpe?g|png|webp|avif|heic|heif|gif|bmp)$/i;
 
@@ -85,7 +86,7 @@ class Engine {
   private scheduleSave() {
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
-      void db.put('kv', 'library', { items: this.items, settings: this.settings, speeds: this.speeds }).catch(() => {});
+      void db.put('kv', 'library', { items: this.items, settings: this.settings, speeds: this.speeds, v: 2 }).catch(() => {});
     }, 300);
   }
 
@@ -97,6 +98,8 @@ class Engine {
       if (saved) {
         this.items = saved.items ?? [];
         this.settings = { ...DEFAULT_SETTINGS, ...saved.settings };
+        // Libraries from before v2 had HEIC as the default photo format, which can't replace originals.
+        if (!(saved as { v?: number }).v) this.settings.photoFormat = 'jpeg';
         this.speeds = { ...structuredClone(DEFAULT_SPEEDS), ...saved.speeds };
       }
       // Jobs that were running when the page closed go back to "not compressed yet".
@@ -429,6 +432,34 @@ class Engine {
    * Same file type: the file is overwritten in place. Different type (photo → AVIF): a new file is written next to
    * it and the original is removed. Can't be undone.
    */
+  /** Whether Compressly holds a link to this file's original on the device. */
+  hasLink(id: string) {
+    return this.links.has(id);
+  }
+
+  /** Links a ready file to its original, picked again by the user, so it can be replaced in place. */
+  async attachOriginal(id: string, handle: FileSystemFileHandle) {
+    const x = this.get(id);
+    if (!x) return;
+    const file = await handle.getFile();
+    if (file.size !== x.originalBytes) throw new Error(`That's a different file. Pick the original "${x.name}" (${formatSize(x.originalBytes)}).`);
+    const link = { file: handle };
+    this.links.set(id, link);
+    this.originals.set(id, file);
+    await db.put('handles', id, link).catch(() => {});
+    this.update(id, { inFolder: true, folderPath: x.folderPath ?? file.name });
+  }
+
+  /** Asks for permission to change the original. Call straight from a tap: browsers only ask then. */
+  async allowWrite(id: string, ask: boolean): Promise<boolean> {
+    const link = this.links.get(id);
+    if (!link) return false;
+    const h = (link.dir ?? link.file) as FileSystemHandle & PermissionHandle;
+    let p = (await h.queryPermission?.({ mode: 'readwrite' })) ?? 'granted';
+    if (p !== 'granted' && ask) p = (await h.requestPermission?.({ mode: 'readwrite' }).catch(() => 'denied' as const)) ?? 'denied';
+    return p === 'granted';
+  }
+
   /** True when the compressed copy can be written over the original on the device. */
   canReplace(id: string): boolean {
     const x = this.get(id);
