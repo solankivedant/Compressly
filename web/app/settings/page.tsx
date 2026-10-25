@@ -21,6 +21,12 @@ function applyTheme(t: Theme) {
   document.documentElement.dataset.theme = resolved;
 }
 
+/** Typical video saving for the chosen preset. H.264 needs 1.4× the bitrate of HEVC for the same look, so it saves less. */
+function videoSaving(preset: Preset, codec: VideoCodec) {
+  const pct = PRESETS[preset].storagePct;
+  return codec === 'hevc' ? pct : Math.max(0, Math.round(100 - (100 - pct) * 1.4));
+}
+
 interface Figure {
   value: string;
   label: string;
@@ -40,6 +46,7 @@ function Option<T extends string>(p: { value: T; current: T; onPick: (v: T) => v
       </span>
       {p.figures?.map((f, i) => (
         <span key={f.label} className={`opt-fig ${i ? 'sep' : ''} ${on && f.tone ? f.tone : ''}`}>
+          <small className="upto">UP TO</small>
           <b>{f.value}</b>
           <small>{f.label}</small>
         </span>
@@ -117,16 +124,16 @@ export default function SettingsPage() {
                 title="HEVC (H.265)"
                 tag="Smaller files · recommended"
                 desc="MP4 → MP4 · MOV → MOV, converted to HEVC"
-                figures={[{ value: '1×', label: 'SIZE', tone: 'primary' }]}
+                figures={[{ value: `−${videoSaving(s.preset, 'hevc')}%`, label: 'STORAGE', tone: 'primary' }]}
               />
               <Option<VideoCodec>
                 value="h264"
                 current={s.videoCodec}
                 onPick={(videoCodec) => void save({ videoCodec })}
                 title="H.264 (AVC)"
-                tag="Plays on every device"
+                tag="Plays on every device · bigger files"
                 desc="MP4 → MP4 · MOV → MOV, converted to H.264"
-                figures={[{ value: '1.4×', label: 'SIZE', tone: 'primary' }]}
+                figures={[{ value: `−${videoSaving(s.preset, 'h264')}%`, label: 'STORAGE', tone: 'primary' }]}
               />
             </div>
             {hevcPlays === false && s.videoCodec === 'hevc' && (

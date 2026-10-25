@@ -498,3 +498,7 @@ img, video { max-width: 100%; }
 .mini b { font-size: 17px; }
 .mini span { font-size: 11px; line-height: 1.25; }
 @media (max-width: 640px) { .mini-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* Figures are typical, not exact: a small grey "UP TO" sits above each. */
+.opt-fig small.upto { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; color: var(--disabled); line-height: 1.2; }
+.option-card.on .opt-fig small.upto { color: inherit; opacity: 0.55; }
