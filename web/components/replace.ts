@@ -4,6 +4,7 @@ import { engine } from '@/engine/engine';
 import { canPickFiles, pickOne } from '@/engine/folder';
 import { formatSize, savingPct } from '@/lib/format';
 import type { MediaItem } from '@/lib/types';
+import { askConfirm } from './Dialog';
 import { deviceInfo } from './device';
 
 const sameType = (a: string, b: string) => a.replace('jpeg', 'jpg') === b.replace('jpeg', 'jpg');
@@ -36,7 +37,13 @@ export async function replaceOnDevice(item: MediaItem): Promise<string> {
     throw new Error('Compressly needs your OK to change this file. Tap Replace again and choose Allow.');
   }
 
-  if (!confirm(`Replace "${item.name}" on your device with the ${savingPct(item.originalBytes, r.outputBytes)}% smaller copy? This can't be undone.`)) return '';
+  const ok = await askConfirm({
+    title: `Replace the original ${item.kind === 'doc' ? 'file' : item.kind}?`,
+    sizes: { before: formatSize(item.originalBytes), after: formatSize(r.outputBytes), saved: formatSize(item.originalBytes - r.outputBytes) },
+    body: `"${item.name}" on your device becomes the ${savingPct(item.originalBytes, r.outputBytes)}% smaller copy. This can't be undone.`,
+    ok: 'Replace',
+  });
+  if (!ok) return '';
   await engine.replaceInFolder(id);
   return `Replaced on your device · ${formatSize(item.originalBytes - r.outputBytes)} freed.`;
 }

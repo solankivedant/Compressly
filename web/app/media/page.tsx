@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import Icon from '@/components/Icon';
+import { askConfirm } from '@/components/Dialog';
 import { replaceOnDevice } from '@/components/replace';
 import { ScreenHeader } from '@/components/Shell';
 import { Empty, FileRow, Segmented, stateWords } from '@/components/ui';
@@ -34,8 +35,8 @@ export default function MediaPage() {
   const count = (k: Kind) => data?.items.filter((x) => x.kind === k).length ?? 0;
   const total = items.reduce((n, x) => n + x.originalBytes, 0);
 
-  const remove = (x: MediaItem) => {
-    if (confirm(`Remove "${x.name}" from Compressly? The original on your device is not touched.`)) void engine.remove(x.id);
+  const remove = async (x: MediaItem) => {
+    if (await askConfirm({ title: 'Remove from Compressly?', body: `"${x.name}" on your device is not touched.`, ok: 'Remove', danger: true })) void engine.remove(x.id);
   };
   const replace = async (x: MediaItem) => {
     setError('');
@@ -56,7 +57,9 @@ export default function MediaPage() {
           (data?.items.length ?? 0) > 1 && (
             <button
               className="btn ghost small"
-              onClick={() => confirm('Remove every file from Compressly? Originals on your device are not touched.') && void engine.clear()}
+              onClick={async () => {
+                if (await askConfirm({ title: 'Remove every file?', body: 'Files on your device are not touched.', ok: 'Remove all', danger: true })) void engine.clear();
+              }}
             >
               <Icon name="trash" size={16} /> Remove all
             </button>
@@ -90,7 +93,7 @@ export default function MediaPage() {
                         Replace
                       </button>
                     )}
-                    <button className="icon-btn" aria-label={`Remove ${x.name}`} title="Remove" onClick={() => remove(x)}>
+                    <button className="icon-btn" aria-label={`Remove ${x.name}`} title="Remove" onClick={() => void remove(x)}>
                       <Icon name="trash" size={18} />
                     </button>
                   </span>

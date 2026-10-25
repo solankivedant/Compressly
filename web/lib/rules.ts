@@ -1,10 +1,11 @@
 // Product rules from docs/DESIGN.md §5, shared by the pages and the engine.
 import { ACTIVE_STATES, LANES, type MediaItem, type PhotoFormat, type Preset, type Settings, type SpeedKey, type Speeds, type VideoCodec } from './types';
 
-export const PRESETS: Record<Preset, { label: string; minSsim: number; pro: boolean; blurb: string }> = {
-  high: { label: 'High quality', minSsim: 0.97, pro: true, blurb: 'Smallest change, smaller saving' },
-  balanced: { label: 'Balanced', minSsim: 0.95, pro: false, blurb: 'The default. Looks the same, about half the size' },
-  max: { label: 'Max savings', minSsim: 0.92, pro: true, blurb: 'Biggest saving, still very close' },
+// `storagePct` / `qualityDrop`: the typical figures the app's Settings shows for each preset.
+export const PRESETS: Record<Preset, { label: string; minSsim: number; pro: boolean; blurb: string; tag: string; storagePct: number; qualityDrop: number }> = {
+  high: { label: 'High quality', minSsim: 0.97, pro: true, blurb: 'Smallest change, smaller saving', tag: 'Smallest change', storagePct: 40, qualityDrop: 1 },
+  balanced: { label: 'Balanced', minSsim: 0.95, pro: false, blurb: 'The default. Looks the same, about half the size', tag: 'Recommended', storagePct: 55, qualityDrop: 3 },
+  max: { label: 'Max savings', minSsim: 0.92, pro: true, blurb: 'Biggest saving, still very close', tag: 'Most space', storagePct: 65, qualityDrop: 6 },
 };
 
 export const PHOTO_FORMATS: Record<PhotoFormat, { label: string; webNote: string; typicalSaving: number }> = {

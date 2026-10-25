@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
+import { DialogHost } from './Dialog';
 import Icon, { type IconName } from './Icon';
 import { useLibrary } from './useLibrary';
 
@@ -56,6 +57,8 @@ export default function Shell({ children }: { children: ReactNode }) {
         <InsecureNotice />
         {children}
       </main>
+
+      <DialogHost />
 
       <nav className="bottom-nav" aria-label="Main">
         {NAV.map((n) => (

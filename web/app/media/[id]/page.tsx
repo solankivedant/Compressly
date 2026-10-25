@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { askConfirm } from '@/components/Dialog';
 import { replaceOnDevice } from '@/components/replace';
 import Compare from '@/components/Compare';
 import Icon from '@/components/Icon';
@@ -78,8 +79,8 @@ export default function FileDetail() {
             aria-label="Remove from library"
             title="Remove from library"
             onClick={() =>
-              confirm('Remove this file from Compressly? The original file on your device is not touched.') &&
               void act(async () => {
+                if (!(await askConfirm({ title: 'Remove from Compressly?', body: 'The file on your device is not touched.', ok: 'Remove', danger: true }))) return;
                 await engine.remove(id);
                 router.push('/media');
               })
@@ -164,14 +165,18 @@ export default function FileDetail() {
         </section>
       )}
 
-      {origUrl === '' && !item.replaced && item.kind !== 'doc' && (
+      {origUrl === '' && item.kind !== 'doc' && (
         <div className="banner info row-between">
           <span>
-            {item.inFolder ? 'Allow Compressly to open the original again.' : 'Add this file again on the Compress page to compare it.'}
+            {item.replaced
+              ? `Tap to show the ${item.kind} on your device.`
+              : item.inFolder
+                ? 'Allow Compressly to open the original again.'
+                : 'Add this file again on the Compress page to compare it.'}
           </span>
           {item.inFolder && (
-            <button className="btn small" onClick={() => setAskTick((n) => n + 1)}>
-              Allow
+            <button className="btn small primary" onClick={() => setAskTick((n) => n + 1)}>
+              <Icon name="play" size={14} /> Show
             </button>
           )}
         </div>

@@ -278,6 +278,7 @@ export default function CompressPage() {
                 <FileRow
                   key={x.id}
                   item={x}
+                  href={null}
                   extra={
                     gone(x) ? (
                       <span className="eta">Pick this file again to compress it</span>

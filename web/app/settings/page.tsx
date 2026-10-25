@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { askConfirm } from '@/components/Dialog';
 import Icon from '@/components/Icon';
 import { DeviceCard, NotificationsCard } from '@/components/PhoneCards';
 import { ScreenHeader } from '@/components/Shell';
@@ -20,16 +21,29 @@ function applyTheme(t: Theme) {
   document.documentElement.dataset.theme = resolved;
 }
 
-function Option<T extends string>({ value, current, onPick, title, desc, tag }: { value: T; current: T; onPick: (v: T) => void; title: string; desc: string; tag?: string }) {
+interface Figure {
+  value: string;
+  label: string;
+  tone?: 'primary' | 'tertiary';
+}
+
+/** A choice row like the app's Settings: name, a green tag, and figures on the right. */
+function Option<T extends string>(p: { value: T; current: T; onPick: (v: T) => void; title: string; tag?: string; desc?: string; figures?: Figure[] }) {
+  const on = p.value === p.current;
   return (
-    <button type="button" role="radio" aria-checked={value === current} className={`option-card ${value === current ? 'on' : ''}`} onClick={() => onPick(value)}>
+    <button type="button" role="radio" aria-checked={on} className={`option-card ${on ? 'on' : ''}`} onClick={() => p.onPick(p.value)}>
       <span className="radio" />
       <span className="grow">
-        <span className="t">
-          {title} {tag && <span className="chip small pro">{tag}</span>}
-        </span>
-        <span className="d">{desc}</span>
+        <span className="t">{p.title}</span>
+        {p.tag && <span className="opt-tag">{p.tag}</span>}
+        {p.desc && <span className="d">{p.desc}</span>}
       </span>
+      {p.figures?.map((f, i) => (
+        <span key={f.label} className={`opt-fig ${i ? 'sep' : ''} ${on && f.tone ? f.tone : ''}`}>
+          <b>{f.value}</b>
+          <small>{f.label}</small>
+        </span>
+      ))}
     </button>
   );
 }
@@ -65,7 +79,11 @@ export default function SettingsPage() {
                   current={s.preset}
                   onPick={(preset) => void save({ preset })}
                   title={PRESETS[p].label}
-                  desc={PRESETS[p].blurb}
+                  tag={PRESETS[p].tag}
+                  figures={[
+                    { value: `−${PRESETS[p].storagePct}%`, label: 'STORAGE', tone: 'primary' },
+                    { value: `−${PRESETS[p].qualityDrop}%`, label: 'QUALITY', tone: 'tertiary' },
+                  ]}
                 />
               ))}
             </div>
@@ -81,7 +99,9 @@ export default function SettingsPage() {
                   current={s.photoFormat}
                   onPick={(photoFormat) => void save({ photoFormat })}
                   title={PHOTO_FORMATS[f].label}
-                  desc={`Saves about ${Math.round(PHOTO_FORMATS[f].typicalSaving * 100)}% · ${f === 'jpeg' ? 'can replace the original' : "can't replace originals"}`}
+                  tag={f === 'jpeg' ? 'Stays JPEG · can replace' : 'Becomes HEIC · new file'}
+                  desc={f === 'jpeg' ? 'JPEG → JPEG' : 'JPEG → HEIC (AVIF on the web)'}
+                  figures={[{ value: `−${Math.round(PHOTO_FORMATS[f].typicalSaving * 100)}%`, label: 'STORAGE', tone: 'primary' }]}
                 />
               ))}
             </div>
@@ -89,14 +109,26 @@ export default function SettingsPage() {
 
           <section className="card stack">
             <h2 className="section-label">Videos</h2>
-            <Segmented<VideoCodec>
-              value={s.videoCodec}
-              onChange={(videoCodec) => void save({ videoCodec })}
-              options={[
-                { value: 'hevc', label: 'Smaller files' },
-                { value: 'h264', label: 'Plays everywhere' },
-              ]}
-            />
+            <div className="option-cards" role="radiogroup">
+              <Option<VideoCodec>
+                value="hevc"
+                current={s.videoCodec}
+                onPick={(videoCodec) => void save({ videoCodec })}
+                title="HEVC (H.265)"
+                tag="Smaller files · recommended"
+                desc="MP4 → MP4 · MOV → MOV, converted to HEVC"
+                figures={[{ value: '1×', label: 'SIZE', tone: 'primary' }]}
+              />
+              <Option<VideoCodec>
+                value="h264"
+                current={s.videoCodec}
+                onPick={(videoCodec) => void save({ videoCodec })}
+                title="H.264 (AVC)"
+                tag="Plays on every device"
+                desc="MP4 → MP4 · MOV → MOV, converted to H.264"
+                figures={[{ value: '1.4×', label: 'SIZE', tone: 'primary' }]}
+              />
+            </div>
             {hevcPlays === false && s.videoCodec === 'hevc' && (
               <div className="banner warn">This browser may not play the smaller videos. Pick &ldquo;Plays everywhere&rdquo; if the preview stays blank.</div>
             )}
@@ -126,7 +158,9 @@ export default function SettingsPage() {
           <span className="muted">Your original photos and videos are not touched.</span>
           <button
             className="btn"
-            onClick={() => confirm('Clear the whole library on this device? Compressed copies you have not saved are deleted.') && void engine.clear()}
+            onClick={async () => {
+              if (await askConfirm({ title: 'Clear the library?', body: 'Compressed copies not yet used to replace an original are deleted. Files on your device are not touched.', ok: 'Clear', danger: true })) void engine.clear();
+            }}
           >
             <Icon name="trash" size={16} /> Clear library
           </button>

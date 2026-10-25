@@ -504,7 +504,10 @@ class Engine {
     const newLink = { file: handle, dir: link.dir };
     this.links.set(id, newLink);
     await db.put('handles', id, newLink).catch(() => {});
-    this.originals.delete(id);
+    // The file now on the device is the small one; keep it for this visit so it plays straight away.
+    const fresh = await handle.getFile().catch(() => null);
+    if (fresh) this.originals.set(id, fresh);
+    else this.originals.delete(id);
     // The device now holds the small file in the original's place; keeping our copy too would use the space again.
     await removeOutput(id, x.result.outputExt).catch(() => {});
     this.update(id, { state: 'freed', replaced: true, decidedAt: Date.now(), folderPath: x.folderPath?.replace(/[^/]+$/, name) });

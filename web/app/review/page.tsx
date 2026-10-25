@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { askConfirm } from '@/components/Dialog';
 import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
 import { Empty, FileRow, TrustBadge } from '@/components/ui';
@@ -24,7 +25,15 @@ export default function ReviewPage() {
   // Replacing writes each small copy over its original on the device, so nothing is stored twice.
   const replaceable = ready.filter((x) => engine.canReplace(x.id));
   const replaceAll = async () => {
-    if (!confirm(`Replace ${replaceable.length} originals on your device with the smaller copies? This can't be undone.`)) return;
+    const before = replaceable.reduce((n, x) => n + x.originalBytes, 0);
+    const after = replaceable.reduce((n, x) => n + (x.result?.outputBytes ?? 0), 0);
+    const ok = await askConfirm({
+      title: `Replace ${replaceable.length} originals?`,
+      sizes: { before: formatSize(before), after: formatSize(after), saved: formatSize(before - after) },
+      body: "The files on your device become the smaller copies. This can't be undone.",
+      ok: 'Replace all',
+    });
+    if (!ok) return;
     setBusy(true);
     setError('');
     try {
