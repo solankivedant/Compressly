@@ -8,10 +8,10 @@ import { ScreenHeader } from '@/components/Shell';
 import { FileRow, ProgressBar, Segmented, Thumb, clockTime, stateWords, useNow } from '@/components/ui';
 import { useLibrary } from '@/components/useLibrary';
 import { engine, mediaKind } from '@/engine/engine';
-import { canOpenFolder, pickFolder } from '@/engine/folder';
+import { canOpenFolder, canPickFiles, droppedFiles, pickFiles, pickFolder } from '@/engine/folder';
 import { formatEta, formatEtaShort, formatSize } from '@/lib/format';
-import { DEFAULT_SPEEDS, PHOTO_FORMATS, PRESETS, estimateSeconds, jobFraction, liveSpeeds, planQueue, speedKey } from '@/lib/rules';
-import { ACTIVE_STATES, LANES, type MediaItem, type Preset, type Settings } from '@/lib/types';
+import { DEFAULT_SPEEDS, PRESETS, estimateSeconds, jobFraction, liveSpeeds, planQueue, speedKey } from '@/lib/rules';
+import { ACTIVE_STATES, type MediaItem, type Preset, type Settings } from '@/lib/types';
 
 interface Adding {
   total: number;
@@ -23,13 +23,17 @@ export default function CompressPage() {
   const [adding, setAdding] = useState<Adding | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const [folderOk, setFolderOk] = useState(false);
+  const [linkOk, setLinkOk] = useState(false);
   const [over, setOver] = useState(false);
   const [picked, setPicked] = useState<Set<string> | null>(null); // null = everything selected
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const dev = useDevice();
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => setFolderOk(canOpenFolder()), []);
+  useEffect(() => {
+    setFolderOk(canOpenFolder());
+    setLinkOk(canPickFiles());
+  }, []);
 
   const items = data?.items ?? [];
   const settings = data?.settings;
@@ -53,7 +57,6 @@ export default function CompressPage() {
     [...active, ...chosen].some(
       (x) => !speeds[speedKey(x.kind, x.queuedWith ?? settings)]?.samples || (x.kind === 'video' && !speeds['video-check']?.samples),
     );
-  const sideBySide = active.some((x) => x.kind === 'video') && active.some((x) => x.kind === 'photo');
 
   const addFiles = async (list: FileList | File[] | null) => {
     const files = Array.from(list ?? []);
@@ -63,6 +66,17 @@ export default function CompressPage() {
     if (media.length < files.length) setError('Some files were skipped: only photos and videos can be added.');
     setAdding({ total: media.length, done: 0 });
     const p = await engine.add(media.map((file) => ({ file })), { fromPhone: dev.phone, onEach: (done) => setAdding({ total: media.length, done }) });
+    setProblems(p);
+    setAdding(null);
+  };
+
+  // Files picked or dropped with a link back to them, so the compressed copy can replace the original later.
+  const addLinked = async (found: Awaited<ReturnType<typeof pickFiles>>) => {
+    if (!found) return;
+    if (!found.length) return setError('Only photos and videos can be added.');
+    setError('');
+    setAdding({ total: found.length, done: 0 });
+    const p = await engine.add(found, { fromPhone: dev.phone, onEach: (done) => setAdding({ total: found.length, done }) });
     setProblems(p);
     setAdding(null);
   };
@@ -115,31 +129,38 @@ export default function CompressPage() {
         onDrop={(e) => {
           e.preventDefault();
           setOver(false);
-          void addFiles(e.dataTransfer.files);
+          const plain = Array.from(e.dataTransfer.files);
+          void droppedFiles(e.dataTransfer)
+            .catch(() => null)
+            .then((found) => (found ? addLinked(found) : addFiles(plain)));
+        }}
+        onClick={(e) => {
+          // Without links (or for "Use the photo picker"), the hidden input opens instead.
+          if (!linkOk || e.target === input.current) return;
+          e.preventDefault();
+          void pickFiles().then(addLinked);
         }}
       >
         <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => void addFiles(e.target.files).then(() => (e.target.value = ''))} />
         <span className="drop-icon">
           <Icon name={dev.phone ? 'media' : 'upload'} size={24} />
         </span>
-        {dev.phone ? (
-          <>
-            <strong>Choose from your gallery</strong>
-            <span className="muted">Pick photos and videos. They are compressed right here on this phone; nothing is uploaded.</span>
-          </>
-        ) : (
-          <>
-            <strong>Drop photos and videos here</strong>
-            <span className="muted">or click to choose. They are compressed right here on this device; nothing is uploaded.</span>
-          </>
-        )}
+        <strong>{dev.phone ? 'Choose photos and videos' : 'Drop photos and videos here'}</strong>
+        <span className="muted">{dev.phone ? 'Nothing is uploaded' : 'or click to choose · nothing is uploaded'}</span>
       </label>
 
-      {folderOk && (
-        <button className="btn block" onClick={() => void openFolder()} disabled={!!adding}>
-          <Icon name="media" size={18} /> Open a folder · compressed copies can replace the originals there
-        </button>
-      )}
+      <div className="row-between" style={{ justifyContent: 'center', gap: 8 }}>
+        {folderOk && (
+          <button className="btn small" onClick={() => void openFolder()} disabled={!!adding}>
+            <Icon name="media" size={16} /> Open a folder
+          </button>
+        )}
+        {linkOk && dev.phone && (
+          <button className="btn ghost small" onClick={() => input.current?.click()} disabled={!!adding}>
+            Use the photo picker (save copies only)
+          </button>
+        )}
+      </div>
 
       {error && <div className="banner warn">{error}</div>}
       {problems.length > 0 && (
@@ -180,9 +201,7 @@ export default function CompressPage() {
             options={(Object.keys(PRESETS) as Preset[]).map((p) => ({ value: p, label: PRESETS[p].label }))}
           />
           <span className="muted" style={{ fontSize: 14 }}>
-            {PRESETS[settings.preset].blurb}. Photos: {PHOTO_FORMATS[settings.photoFormat].label}. Video:{' '}
-            {settings.videoCodec === 'hevc' ? 'HEVC' : 'H.264'}.
-            {PRESETS[settings.preset].pro && ' (Pro in the app. Open here for testing.)'}
+            {PRESETS[settings.preset].blurb}.
           </span>
         </section>
       )}
@@ -198,14 +217,9 @@ export default function CompressPage() {
             <span className="big">{formatEta(plan.total)}</span>
             <span className="small">
               Done around {clockTime(now + plan.total * 1000)}
-              {firstGuess && ' · first guess, sharpens as files run'}
+              {firstGuess && ' · rough guess'}
             </span>
           </div>
-          {sideBySide && (
-            <p className="muted" style={{ fontSize: 13, padding: '8px 4px 0' }}>
-              Photos run beside the video: {LANES.video} video and up to {LANES.photo} photos at once.
-            </p>
-          )}
           {active.map((x) => {
             const p = plan.byId[x.id];
             const running = x.state !== 'queued';
@@ -293,7 +307,7 @@ export default function CompressPage() {
             </div>
             {todo.some((x) => x.state === 'failed') && (
               <p className="muted" style={{ fontSize: 13, padding: '0 4px 8px' }}>
-                Files that went wrong can be tried again. Open one to see the error.
+                Tap a failed file to see why and try again.
               </p>
             )}
           </section>
@@ -318,7 +332,7 @@ export default function CompressPage() {
 
       {active.length > 0 && (
         <p className="muted" style={{ fontSize: 13, textAlign: 'center' }}>
-          Keep Compressly open while it works{dev.phone ? ': the screen stays on, and locking the phone pauses compressing' : ''}.
+          Keep this page open{dev.phone ? ' and the screen on' : ''} while it works.
         </p>
       )}
 

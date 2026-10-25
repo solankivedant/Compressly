@@ -31,3 +31,41 @@ export async function pickFolder(): Promise<{ file: File; link: OriginalLink; pa
   await walk(root, '', 0);
   return found.sort((a, b) => b.file.lastModified - a.file.lastModified);
 }
+
+type FilePicker = (o?: { multiple?: boolean; id?: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle[]>;
+
+/** Picking files with a link back to them, so the original can be replaced in place (Chrome on Android, Chrome / Edge on computers). */
+export const canPickFiles = () => typeof window !== 'undefined' && 'showOpenFilePicker' in window && window.isSecureContext;
+
+export async function pickFiles(): Promise<{ file: File; link: OriginalLink; path: string }[] | null> {
+  let handles: FileSystemFileHandle[];
+  try {
+    handles = await (window as unknown as { showOpenFilePicker: FilePicker }).showOpenFilePicker({
+      multiple: true,
+      id: 'compressly-files',
+      types: [{ description: 'Photos and videos', accept: { 'image/*': [], 'video/*': [] } }],
+    });
+  } catch {
+    return null; // cancelled
+  }
+  return linked(handles);
+}
+
+/** Files dropped on the page, with links where the browser gives them (Chrome / Edge). Null if it doesn't. */
+export async function droppedFiles(dt: DataTransfer): Promise<{ file: File; link: OriginalLink; path: string }[] | null> {
+  const items = Array.from(dt.items).filter((i) => i.kind === 'file');
+  type WithHandle = DataTransferItem & { getAsFileSystemHandle?(): Promise<FileSystemHandle | null> };
+  if (!items.length || !(items[0] as WithHandle).getAsFileSystemHandle) return null;
+  const handles = await Promise.all(items.map((i) => (i as WithHandle).getAsFileSystemHandle!().catch(() => null)));
+  if (handles.some((h) => !h || h.kind !== 'file')) return null;
+  return linked(handles as FileSystemFileHandle[]);
+}
+
+async function linked(handles: FileSystemFileHandle[]) {
+  const out: { file: File; link: OriginalLink; path: string }[] = [];
+  for (const h of handles) {
+    const file = await h.getFile();
+    if (mediaKind(file)) out.push({ file, link: { file: h }, path: file.name });
+  }
+  return out;
+}

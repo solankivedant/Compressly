@@ -45,3 +45,8 @@ export function formatEta(sec: number): string {
 export function formatEtaShort(sec: number): string {
   return formatEta(sec).replace('about ', '~').replace('a few seconds', '~5 s');
 }
+
+/** "VID_2041-compressed.mp4": the name a saved compressed copy gets. */
+export function compressedName(item: { name: string; ext: string; result?: { outputExt: string } }): string {
+  return `${item.name.replace(/\.[^.]+$/, '')}-compressed.${item.result?.outputExt ?? item.ext}`;
+}

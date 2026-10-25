@@ -8,8 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Free up photo and video storage at the same resolution.',
     start_url: '/',
     display: 'standalone',
-    background_color: '#090B10',
-    theme_color: '#090B10',
+    background_color: '#ECEEF2',
+    theme_color: '#ECEEF2',
     icons: [
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },

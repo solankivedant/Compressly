@@ -36,8 +36,11 @@ export const db = {
   clear: (store: Store) => req<undefined>(store, 'readwrite', (s) => s.clear()),
 };
 
-/** A link to an original file in a folder the user opened (desktop Chrome / Edge, and other browsers that allow it). */
+/**
+ * A link to an original file, so the compressed copy can replace it: from a folder the user opened, or a single file
+ * picked with the browser's file picker (Chrome and Edge on computers, Chrome on Android). `dir` is only there for folders.
+ */
 export interface OriginalLink {
   file: FileSystemFileHandle;
-  dir: FileSystemDirectoryHandle;
+  dir?: FileSystemDirectoryHandle;
 }

@@ -7,22 +7,22 @@ export const metadata: Metadata = {
   title: 'Compressly',
   description: 'Free up photo and video storage at the same resolution. Web version for testing.',
   icons: { icon: '/icon-192.png', apple: '/apple-icon.png' },
-  appleWebApp: { capable: true, title: 'Compressly', statusBarStyle: 'black-translucent' },
+  appleWebApp: { capable: true, title: 'Compressly', statusBarStyle: 'default' },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#090B10',
+  themeColor: '#ECEEF2',
 };
 
-// Dark is the app's default. Runs before paint so there's no flash.
-const themeScript = `try{var t=localStorage.getItem('theme')||'dark';if(t==='system')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}`;
+// Light is the web default. Runs before paint so there's no flash.
+const themeScript = `try{var t=localStorage.getItem('theme')||'light';if(t==='system')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='light'}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="dark" suppressHydrationWarning>
+    <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />

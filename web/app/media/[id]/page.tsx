@@ -9,9 +9,11 @@ import { ScreenHeader } from '@/components/Shell';
 import { ProgressBar, clockTime, stateWords, TrustBadge, useNow } from '@/components/ui';
 import { saveFile, useFileUrl, useLibrary } from '@/components/useLibrary';
 import { engine } from '@/engine/engine';
-import { formatDate, formatDuration, formatEta, formatSize, savingPct } from '@/lib/format';
-import { PRESETS, estimateSeconds, jobFraction, liveSpeeds, planQueue, qualityWords } from '@/lib/rules';
+import { compressedName, formatDate, formatDuration, formatEta, formatSize, savingPct } from '@/lib/format';
+import { estimateSeconds, jobFraction, liveSpeeds, planQueue, qualityWords } from '@/lib/rules';
 import { ACTIVE_STATES } from '@/lib/types';
+
+const sameType = (a: string, b?: string) => !!b && a.replace('jpeg', 'jpg') === b.replace('jpeg', 'jpg');
 
 export default function FileDetail() {
   const { id } = useParams<{ id: string }>();
@@ -58,14 +60,20 @@ export default function FileDetail() {
       const r = await engine.enqueue([id]);
       if (r.missing.length) throw new Error('The original is no longer available on this page. Add the file again to compress it.');
     });
-  const outName = r ? `${item.name.replace(/\.[^.]+$/, '')}-compressed.${r.outputExt}` : '';
-  const saveCompressed = () =>
+  const canReplace = !!item.inFolder && engine.availability(id) !== 'gone' && (!!item.folderPath?.includes('/') || sameType(item.ext, r?.outputExt));
+  const replaceHint = item.inFolder
+    ? 'This photo became a different file type, so download it instead.'
+    : dev.ios
+      ? "iPhone browsers can't change your gallery. Download it, then delete the original."
+      : 'To replace the original, add the file again with "Choose photos and videos" in Chrome.';
+  const saveCompressed = (share: boolean) =>
     act(async () => {
       const f = await engine.output(id);
       if (!f) throw new Error('The compressed copy is missing. Compress the file again.');
-      const how = await saveFile(f, outName, dev.phone);
-      if (how === 'downloaded') setNote(dev.phone ? 'Saved to Downloads. Your gallery shows it there.' : 'Saved to your Downloads folder.');
+      const how = await saveFile(f, compressedName(item), share);
+      if (how === 'downloaded') setNote('Saved to Downloads.');
       if (how === 'shared') setNote('Saved.');
+      if (how !== 'cancelled' && item.state === 'ready') await engine.decide(id, 'accept');
     });
   const saveOriginal = () =>
     act(async () => {
@@ -75,9 +83,9 @@ export default function FileDetail() {
     });
   const replace = () =>
     act(async () => {
-      if (!confirm(`Replace "${item.name}" in its folder with the compressed copy? The original is deleted and this can't be undone.`)) return;
+      if (!confirm(`Replace "${item.name}" with the smaller copy? This can't be undone.`)) return;
       await engine.replaceInFolder(id);
-      setNote('Replaced. The folder now holds the compressed copy and the original is gone.');
+      setNote('Done. The original now takes less space.');
     });
 
   return (
@@ -121,59 +129,49 @@ export default function FileDetail() {
               <Icon name={r.ssim >= r.minSsim ? 'check' : 'info'} size={14} /> {qualityWords(r.ssim)}
             </span>
           </div>
-          {item.state === 'ready' && (
-            <div className="row-between">
-              <span className="muted">Happy with how it looks? Compare below first.</span>
-              <span className="row-between" style={{ gap: 8 }}>
-                <button className="btn" onClick={() => void decide('keepOriginal')}>
-                  Keep original
-                </button>
-                <button className="btn primary" onClick={() => void decide('accept')}>
-                  <Icon name="check" size={18} /> Use compressed · free {formatSize(item.originalBytes - r.outputBytes)}
-                </button>
-              </span>
-            </div>
-          )}
+
           {item.state === 'freed' && (
-            <div className="row-between">
-              <span className="chip accent">
-                <Icon name="checkCircle" size={14} /> {item.replaced ? 'Replaced in its folder' : 'Freed'} · {formatSize(item.originalBytes - r.outputBytes)}
-              </span>
-              {!item.replaced && (
-                <button className="btn ghost small" onClick={() => void decide('keepOriginal')}>
-                  Undo, keep original
-                </button>
-              )}
-            </div>
+            <span className="chip accent" style={{ justifySelf: 'start' }}>
+              <Icon name="checkCircle" size={14} /> {item.replaced ? 'Original replaced' : 'Done'} · saved {formatSize(item.originalBytes - r.outputBytes)}
+            </span>
           )}
+
           {(item.state === 'ready' || item.state === 'freed') && !item.replaced && (
             <div className="stack" style={{ gap: 8 }}>
-              {item.inFolder && engine.availability(id) !== 'gone' ? (
-                <>
-                  <button className="btn primary block" onClick={() => void replace()}>
-                    <Icon name="compress" size={18} /> Replace the original in its folder
+              {canReplace && (
+                <button className="btn primary block" onClick={() => void replace()}>
+                  <Icon name="compress" size={18} /> Replace original · free {formatSize(item.originalBytes - r.outputBytes)}
+                </button>
+              )}
+              <div className="two">
+                <button className={`btn block ${canReplace ? '' : 'primary'}`} onClick={() => void saveCompressed(false)}>
+                  <Icon name="download" size={18} /> Download
+                </button>
+                {dev.phone ? (
+                  <button className="btn block" onClick={() => void saveCompressed(true)}>
+                    <Icon name="upload" size={18} /> Share / Save
                   </button>
-                  <span className="muted" style={{ fontSize: 13 }}>
-                    Writes the compressed copy into {item.folderPath?.replace(/\/[^/]+$/, '') || 'the folder'} and deletes the original.
-                    {r.outputExt !== item.ext && ` The new file ends in .${r.outputExt}.`}
-                  </span>
-                </>
-              ) : null}
-              <button className={`btn block ${item.inFolder || item.state === 'ready' ? '' : 'primary'}`} onClick={() => void saveCompressed()}>
-                <Icon name="download" size={18} /> {dev.phone ? 'Save compressed copy to this phone' : 'Save compressed copy'}
-              </button>
-              {!item.inFolder && (
-                <span className="muted" style={{ fontSize: 13 }}>
-                  {dev.phone
-                    ? "A website can't change your gallery, so the original stays there until you delete it. Replacing it automatically is done by the Compressly app."
-                    : 'To replace originals automatically, add files with "Open a folder" on the Compress page.'}
+                ) : item.state === 'ready' ? (
+                  <button className="btn block" onClick={() => void decide('keepOriginal')}>
+                    Keep original
+                  </button>
+                ) : null}
+              </div>
+              {dev.phone && item.state === 'ready' && (
+                <button className="btn ghost small" style={{ justifySelf: 'center' }} onClick={() => void decide('keepOriginal')}>
+                  Keep original instead
+                </button>
+              )}
+              {!canReplace && (
+                <span className="muted" style={{ fontSize: 13, textAlign: 'center' }}>
+                  {replaceHint}
                 </span>
               )}
             </div>
           )}
           {item.state === 'notWorthIt' && (
             <div className="banner info">
-              <strong>Not worth compressing, kept as is.</strong> {item.reason} The compressed copy is still shown below so you can see why.
+              <strong>Not worth compressing.</strong> The saving was too small or the quality dropped, so your original is kept as is.
             </div>
           )}
         </section>
@@ -191,7 +189,7 @@ export default function FileDetail() {
             {item.state === 'queued'
               ? `${slot.start < 1 ? 'Starts next' : `Starts in ${formatEta(slot.start)}`}, then takes ${formatEta(slot.end - slot.start)} · done around ${clockTime(now + slot.end * 1000)}`
               : `${formatEta(slot.end)} left · done around ${clockTime(now + slot.end * 1000)}`}
-            {item.attempt === 2 && ' · second try at a higher bitrate'}
+            {item.attempt === 2 && ' · trying again for better quality'}
           </span>
         </section>
       )}
@@ -202,8 +200,7 @@ export default function FileDetail() {
           {item.state === 'keptOriginal' && <p className="muted">You kept the original. The compressed copy was discarded.</p>}
           <div className="row-between">
             <span className="muted">
-              Estimated: {formatSize(item.originalBytes)} → ~{formatSize(item.estimateBytes)} with the {PRESETS[data.settings.preset].label} preset ·
-              takes {formatEta(estimateSeconds(item, data.settings, speeds))}
+              {formatSize(item.originalBytes)} → ~{formatSize(item.estimateBytes)} · takes {formatEta(estimateSeconds(item, data.settings, speeds))}
             </span>
             <button className="btn primary" onClick={() => void compress()}>
               <Icon name="compress" size={18} /> {item.state === 'new' ? 'Compress' : 'Try again'}
@@ -215,9 +212,7 @@ export default function FileDetail() {
       {origUrl === '' && !item.replaced && (
         <div className="banner info row-between">
           <span>
-            {item.inFolder
-              ? 'Compressly needs your OK to read the original from its folder again.'
-              : 'The original is not available after the page was reloaded. Pick the file again on the Compress page to compare or compress it.'}
+            {item.inFolder ? 'Allow Compressly to open the original again.' : 'Add this file again on the Compress page to compare it.'}
           </span>
           {item.inFolder && (
             <button className="btn small" onClick={() => setAskTick((n) => n + 1)}>
@@ -236,70 +231,50 @@ export default function FileDetail() {
           beforeLabel={`Original · ${formatSize(item.originalBytes)}`}
           afterLabel={`Compressed · ${formatSize(r!.outputBytes)}`}
           fps={item.fps}
+          aspect={item.width && item.height ? item.width / item.height : undefined}
         />
       ) : (outUrl || origUrl) && (
         <section className="card">
           {item.kind === 'video' ? (
-            <video src={hasOutput && outUrl ? outUrl : origUrl} controls playsInline style={{ width: '100%', borderRadius: 12, background: '#000', maxHeight: 480 }} />
+            <video src={hasOutput && outUrl ? outUrl : origUrl} controls playsInline style={{ display: 'block', width: '100%', borderRadius: 12, background: '#000', maxHeight: '70vh' }} />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={hasOutput && outUrl ? outUrl : origUrl} alt={item.name} style={{ width: '100%', borderRadius: 12, maxHeight: 520, objectFit: 'contain', background: '#000' }} />
+            <img src={hasOutput && outUrl ? outUrl : origUrl} alt={item.name} style={{ display: 'block', width: '100%', borderRadius: 12, maxHeight: '70vh', objectFit: 'contain', background: '#000' }} />
           )}
         </section>
       )}
 
-      {/* File detail: the only place technical words appear (DESIGN §4) */}
+      {/* The few facts people care about; technical ones are folded away (DESIGN §4). */}
       <section className="card stack">
-        <h2 className="section-label">Original</h2>
         <dl className="facts">
-          <div><dt>Size</dt><dd>{formatSize(item.originalBytes)}</dd></div>
-          <div><dt>Resolution</dt><dd>{item.width} × {item.height}</dd></div>
-          {item.kind === 'video' && (
-            <>
-              <div><dt>Codec</dt><dd>{item.sourceCodec}</dd></div>
-              <div><dt>Frame rate</dt><dd>{item.fps} fps</dd></div>
-              <div><dt>Length</dt><dd>{formatDuration(item.durationSec ?? 0)}</dd></div>
-              <div><dt>Video bitrate</dt><dd>{((item.bitrateKbps ?? 0) / 1000).toFixed(1)} Mbps</dd></div>
-              <div><dt>Audio</dt><dd>{item.hasAudio ? `${Math.round(item.audioKbps ?? 0)} kbps` : 'None'}</dd></div>
-            </>
-          )}
-          <div><dt>Added from</dt><dd>{item.inFolder ? item.folderPath : item.fromPhone ? 'Phone gallery' : 'This device'}</dd></div>
-          <div><dt>Added</dt><dd>{formatDate(item.addedAt)}</dd></div>
+          <div><dt>Before</dt><dd>{formatSize(item.originalBytes)}</dd></div>
+          {r && <div><dt>After</dt><dd>{formatSize(r.outputBytes)}</dd></div>}
+          {r && <div><dt>Saved</dt><dd>{formatSize(Math.max(0, item.originalBytes - r.outputBytes))}</dd></div>}
+          {r && <div><dt>Quality</dt><dd>{qualityWords(r.ssim)}</dd></div>}
+          <div><dt>Picture size</dt><dd>{item.width} × {item.height}{r ? ' (unchanged)' : ''}</dd></div>
+          {item.kind === 'video' && <div><dt>Length</dt><dd>{formatDuration(item.durationSec ?? 0)}</dd></div>}
         </dl>
-        {r && (
-          <>
-            <h2 className="section-label" style={{ marginTop: 8 }}>Compressed</h2>
-            <dl className="facts">
-              <div><dt>Size</dt><dd>{formatSize(r.outputBytes)}</dd></div>
-              <div><dt>Resolution</dt><dd>{item.width} × {item.height} (same)</dd></div>
-              <div><dt>Method</dt><dd>{r.method}</dd></div>
-              <div><dt>Preset</dt><dd>{PRESETS[r.preset].label}</dd></div>
-              <div><dt>SSIM</dt><dd>{r.ssim.toFixed(4)} · {qualityWords(r.ssim)}</dd></div>
-              <div><dt>Gate</dt><dd>≥ {r.minSsim} · {r.ssim >= r.minSsim ? 'passed' : 'failed'}</dd></div>
-              <div><dt>Took</dt><dd>{r.seconds.toFixed(1)} s</dd></div>
-              <div><dt>Finished</dt><dd>{formatDate(r.finishedAt)}</dd></div>
-            </dl>
-            {r.notes.length > 0 && (
-              <ul className="notes">
-                {r.notes.map((n) => (
-                  <li key={n}>{n}</li>
-                ))}
-              </ul>
+        <details className="more">
+          <summary>More details</summary>
+          <dl className="facts">
+            {item.kind === 'video' && (
+              <>
+                <div><dt>Video format</dt><dd>{item.sourceCodec}</dd></div>
+                <div><dt>Frame rate</dt><dd>{item.fps} fps</dd></div>
+                <div><dt>Sound</dt><dd>{item.hasAudio ? 'Yes' : 'No'}</dd></div>
+              </>
             )}
-          </>
+            {r && <div><dt>Made with</dt><dd>{r.method.split(' · ').slice(0, 2).join(' · ')}</dd></div>}
+            {r && <div><dt>Quality score</dt><dd>{Math.round(r.ssim * 1000) / 10} / 100</dd></div>}
+            {r && <div><dt>Took</dt><dd>{formatEta(r.seconds).replace('about ', '')}</dd></div>}
+            <div><dt>Added</dt><dd>{formatDate(item.addedAt)}</dd></div>
+          </dl>
+        </details>
+        {origUrl && !item.replaced && (
+          <button className="btn ghost small" style={{ justifySelf: 'start' }} onClick={() => void saveOriginal()}>
+            <Icon name="download" size={16} /> Download original
+          </button>
         )}
-        <div className="row-between" style={{ justifyContent: 'flex-start', gap: 8 }}>
-          {origUrl && !item.replaced && (
-            <button className="btn small" onClick={() => void saveOriginal()}>
-              <Icon name="download" size={16} /> Original
-            </button>
-          )}
-          {hasOutput && (
-            <button className="btn small" onClick={() => void saveCompressed()}>
-              <Icon name="download" size={16} /> Compressed
-            </button>
-          )}
-        </div>
       </section>
       <TrustBadge />
     </>

@@ -42,11 +42,7 @@ export default function ReviewPage() {
         </section>
       ) : (
         <>
-          <div className="banner info">
-            Open any file to compare before and after. &ldquo;Use compressed&rdquo; marks the files as freed; then save each compressed copy to
-            your device, or, for files added with &ldquo;Open a folder&rdquo;, replace the original in its folder from the file&apos;s page. Phone
-            galleries can only be changed by the Compressly app.
-          </div>
+          <p className="muted">Tap a file to compare, replace or download it.</p>
           <section className="card" style={{ padding: '4px 12px' }}>
             <div className="list">
               {ready.map((x) => (

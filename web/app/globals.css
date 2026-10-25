@@ -1,5 +1,4 @@
-/* Compressly tokens, colour v2 (lib/app/theme.dart): cobalt = action, lime = freed, coral = still to free. Dark first. */
-:root,
+/* Compressly tokens, colour v2 (lib/app/theme.dart): cobalt = action, lime = freed, coral = still to free. Light first on the web. */
 :root[data-theme='dark'] {
   --primary: #4d6bff;
   --on-primary: #ffffff;
@@ -32,6 +31,7 @@
   color-scheme: dark;
 }
 
+:root,
 :root[data-theme='light'] {
   --primary: #2443e6;
   --on-primary: #ffffff;
@@ -276,8 +276,13 @@ a.row-link:hover .row-title { text-decoration: underline; }
 .cmp-side { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .compare figure { margin: 0; display: grid; gap: 8px; }
 .compare figcaption { text-align: center; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.cmp-frame { position: relative; overflow: hidden; border-radius: 12px; background: #000; aspect-ratio: 16 / 10; }
-.cmp-slider { aspect-ratio: 16 / 9; touch-action: pan-y; }
+.cmp-frame {
+  position: relative; overflow: hidden; border-radius: 12px; background: #000;
+  /* The video's own shape, never taller than most of the screen, so vertical phone videos fit whole. */
+  aspect-ratio: var(--ar, 16 / 9); width: min(100%, calc(70vh * var(--ar, 1.78))); max-height: 70vh; margin: 0 auto;
+}
+.cmp-slider { touch-action: pan-y; }
+.cmp-side.tall .cmp-frame { max-height: 60vh; width: min(100%, calc(60vh * var(--ar, 0.56))); }
 .cmp-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; user-select: none; }
 .cmp-over { position: absolute; inset: 0; }
 .cmp-line { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #fff; pointer-events: none; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
@@ -309,7 +314,7 @@ a.row-link:hover .row-title { text-decoration: underline; }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 
 @media (max-width: 640px) {
-  .pillars, .two, .cmp-side { grid-template-columns: 1fr; }
+  .pillars, .cmp-side:not(.tall) { grid-template-columns: 1fr; }
   .ring-card { flex-direction: column; align-items: stretch; }
   .ring { align-self: center; }
   .stat-large .stat-value .num { font-size: 44px; }
@@ -349,4 +354,25 @@ code { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-siz
   .big-saving .num { font-size: 36px; }
   .row-between > .row-between { flex: 1 1 100%; justify-content: flex-end; }
   .qr svg { width: 160px; height: 160px; }
+}
+
+/* ---------- Media rows, home stats ---------- */
+.row-actions { display: flex; gap: 6px; flex: none; }
+.row-actions .icon-btn { width: 38px; height: 38px; }
+.mini-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.mini { display: grid; gap: 2px; padding: 14px; border-radius: var(--r-card); background: var(--card); border: 1px solid var(--border-subtle); }
+.mini b { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.mini span { font-size: 13px; color: var(--muted); }
+.hero { display: grid; gap: 12px; padding: 20px; }
+.hero p { color: var(--muted); }
+details.more summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); padding: 4px; }
+details.more[open] summary { margin-bottom: 12px; }
+@media (max-width: 640px) {
+  .mini-stats { grid-template-columns: 1fr 1fr; }
+  .file-row { flex-wrap: nowrap; }
+}
+@media (max-width: 640px) {
+  /* The two coloured cards stay side by side on phones. */
+  .two .stat-value .num { font-size: 28px; }
+  .two .stat { padding: 14px; }
 }

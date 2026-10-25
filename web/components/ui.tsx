@@ -89,7 +89,7 @@ const STATE_WORDS: Record<ItemState, string> = {
   checking: 'Checking quality',
   saving: 'Saving',
   ready: 'Ready to free',
-  notWorthIt: 'Not worth compressing, kept as is',
+  notWorthIt: 'Kept as is',
   failed: 'Something went wrong',
   freed: 'Freed',
   keptOriginal: 'Original kept',
@@ -168,7 +168,7 @@ export function Empty({ icon, title, children }: { icon: IconName; title: string
 export function TrustBadge() {
   return (
     <p className="trust">
-      <Icon name="shield" size={16} /> Processed on this device · nothing is uploaded · same resolution
+      <Icon name="shield" size={16} /> Nothing leaves this device
     </p>
   );
 }

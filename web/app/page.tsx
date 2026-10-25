@@ -6,9 +6,9 @@ import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
 import { Empty, FileRow, ProgressBar, StatCard, TrustBadge, useNow } from '@/components/ui';
 import { useLibrary } from '@/components/useLibrary';
-import { formatEta, formatSize } from '@/lib/format';
+import { formatEta, formatSize, savingPct } from '@/lib/format';
 import { liveSpeeds, planQueue } from '@/lib/rules';
-import type { Summary } from '@/lib/types';
+import type { MediaItem, Summary } from '@/lib/types';
 
 function greeting() {
   const h = new Date().getHours();
@@ -98,35 +98,37 @@ function LibraryRing({ s }: { s: Summary }) {
 
 function Welcome() {
   return (
-    <section className="card stack" style={{ padding: 24 }}>
+    <section className="card hero">
       <h2 className="hero-title">Free up space without losing a pixel.</h2>
-      <p className="muted">
-        Add photos and videos from your phone. Compressly re-encodes them at the same resolution, checks every result, and shows you the
-        before and after so you can judge it yourself.
-      </p>
-      <div className="pillars">
-        {[
-          { icon: 'sparkle' as const, t: 'Same resolution', d: 'Width, height, frame rate and length never change.' },
-          { icon: 'shield' as const, t: 'Stays on this device', d: 'Compressing happens right here in your browser. Nothing is uploaded.' },
-          { icon: 'checkCircle' as const, t: 'You approve every change', d: 'Nothing replaces an original until you say so.' },
-        ].map((p) => (
-          <div key={p.t} className="pillar">
-            <span className="pi">
-              <Icon name={p.icon} />
-            </span>
-            <strong>{p.t}</strong>
-            <span className="muted" style={{ fontSize: 14 }}>
-              {p.d}
-            </span>
-          </div>
-        ))}
-      </div>
+      <p>Same quality, smaller files. Nothing leaves your device.</p>
       <div>
         <Link href="/compress" className="btn primary">
           <Icon name="upload" size={18} /> Add photos and videos
         </Link>
       </div>
     </section>
+  );
+}
+
+/** Small numbers about the library: files, videos, photos, average saving. */
+function MiniStats({ items }: { items: MediaItem[] }) {
+  const done = items.filter((x) => x.result && (x.state === 'ready' || x.state === 'freed'));
+  const avg = done.length ? Math.round(done.reduce((n, x) => n + savingPct(x.originalBytes, x.result!.outputBytes), 0) / done.length) : 0;
+  const tiles = [
+    { v: String(items.length), l: 'Files added' },
+    { v: String(items.filter((x) => x.kind === 'video').length), l: 'Videos' },
+    { v: String(items.filter((x) => x.kind === 'photo').length), l: 'Photos' },
+    { v: `${avg}%`, l: 'Average saving' },
+  ];
+  return (
+    <div className="mini-stats">
+      {tiles.map((t) => (
+        <div key={t.l} className="mini">
+          <b>{t.v}</b>
+          <span>{t.l}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -156,40 +158,41 @@ export default function Home() {
         }
       />
 
-      {data.items.length === 0 ? (
-        <Welcome />
-      ) : (
+      {data.items.length === 0 && <Welcome />}
+
+      <StatCard tone="accent" large icon="checkCircle" label="Freed till now" bytes={freed} sub={`${s.compressedCount} files compressed`}>
+        <ProgressBar value={pct / 100} tone="accent" />
+      </StatCard>
+
+      <div className="two">
+        <StatCard
+          tone="primary"
+          icon="clock"
+          label="Ready to free"
+          bytes={s.pendingBytes}
+          sub={s.pendingBytes > 0 ? 'Tap to review' : 'Nothing waiting'}
+          href={s.pendingBytes > 0 ? '/review' : undefined}
+        />
+        <StatCard
+          tone="tertiary"
+          icon="hourglass"
+          label="Still to free"
+          bytes={s.stillToFreeBytes}
+          sub={
+            s.activeCount > 0
+              ? `${formatEta(planQueue(data.items, data.settings, liveSpeeds(data.items, data.settings, data.speeds, now), now).total)} left`
+              : s.stillToFreeBytes > 0
+                ? 'Tap to compress'
+                : 'All done'
+          }
+          href="/compress"
+        />
+      </div>
+
+      <MiniStats items={data.items} />
+
+      {data.items.length > 0 && (
         <>
-          <StatCard tone="accent" large icon="checkCircle" label="Freed till now" bytes={freed} sub={`${s.compressedCount} files compressed · same resolution`}>
-            <ProgressBar value={pct / 100} tone="accent" />
-            <span style={{ fontSize: 12, fontWeight: 700 }}>{pct}% of what can be freed</span>
-          </StatCard>
-
-          <div className="two">
-            <StatCard
-              tone="primary"
-              icon="clock"
-              label="Ready to free"
-              bytes={s.pendingBytes}
-              sub={s.pendingBytes > 0 ? 'Tap to review' : 'Nothing waiting'}
-              href={s.pendingBytes > 0 ? '/review' : undefined}
-            />
-            <StatCard
-              tone="tertiary"
-              icon="hourglass"
-              label="Still to free"
-              bytes={s.stillToFreeBytes}
-              sub={
-                s.activeCount > 0
-                  ? `${s.activeCount} in the queue · ${formatEta(planQueue(data.items, data.settings, liveSpeeds(data.items, data.settings, data.speeds, now), now).total)} left`
-                  : s.stillToFreeBytes > 0
-                    ? 'Estimate · tap to compress'
-                    : 'All done'
-              }
-              href="/compress"
-            />
-          </div>
-
           <LibraryRing s={s} />
 
           <div className="row-between">

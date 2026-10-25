@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
+import { formatDuration } from '@/lib/format';
 import { Segmented } from './ui';
 
 type Mode = 'side' | 'slider';
@@ -13,10 +14,14 @@ interface Props {
   beforeLabel: string;
   afterLabel: string;
   fps?: number;
+  /** Width ÷ height as shown (upright), so tall phone videos show tall. */
+  aspect?: number;
 }
 
 /** Before/after viewer: side by side or a drag slider, with zoom. Videos play locked together. */
-export default function Compare({ kind, before, after, beforeLabel, afterLabel, fps = 30 }: Props) {
+export default function Compare({ kind, before, after, beforeLabel, afterLabel, fps = 30, aspect = 16 / 9 }: Props) {
+  const tall = aspect < 1;
+  const frameStyle = { '--ar': String(aspect) } as React.CSSProperties;
   const [mode, setMode] = useState<Mode>('slider');
   const [split, setSplit] = useState(50);
   const [zoom, setZoom] = useState('1');
@@ -126,19 +131,19 @@ export default function Compare({ kind, before, after, beforeLabel, afterLabel, 
       </div>
 
       {mode === 'side' ? (
-        <div className="cmp-side">
+        <div className={`cmp-side ${tall ? 'tall' : ''}`}>
           <figure>
-            <div className="cmp-frame" onPointerMove={onMove}>{el('before')}</div>
+            <div className="cmp-frame" style={frameStyle} onPointerMove={onMove}>{el('before')}</div>
             <figcaption>{beforeLabel}</figcaption>
           </figure>
           <figure>
-            <div className="cmp-frame" onPointerMove={onMove}>{el('after')}</div>
+            <div className="cmp-frame" style={frameStyle} onPointerMove={onMove}>{el('after')}</div>
             <figcaption>{afterLabel}</figcaption>
           </figure>
         </div>
       ) : (
         <figure>
-          <div className="cmp-frame cmp-slider" onPointerMove={onMove}>
+          <div className="cmp-frame cmp-slider" style={frameStyle} onPointerMove={onMove}>
             {el('before')}
             <div className="cmp-over" style={{ clipPath: `inset(0 0 0 ${split}%)` }}>
               {el('after')}
@@ -174,16 +179,15 @@ export default function Compare({ kind, before, after, beforeLabel, afterLabel, 
           <button className="icon-btn" onClick={() => seek(t + 1 / fps)} aria-label="Forward one frame">›</button>
           <input type="range" min={0} max={dur || 0} step={0.01} value={t} onChange={(e) => seek(Number(e.target.value))} aria-label="Seek" />
           <span className="tabular muted">
-            {t.toFixed(2)} / {dur.toFixed(2)} s
+            {formatDuration(t)} / {formatDuration(dur)}
           </span>
         </div>
       )}
 
-      {scale > 1 && <p className="hint">Move the pointer over the picture to choose where to zoom.</p>}
+      {scale > 1 && <p className="hint">Touch or point at the picture to zoom there.</p>}
       {(failed.before || failed.after) && (
         <p className="banner warn">
-          This browser can&apos;t play the {failed.before && failed.after ? 'videos' : failed.before ? 'original' : 'compressed video'}. HEVC plays in
-          Edge (with the HEVC extension) and Safari; Chrome needs hardware HEVC support. In Settings, switch the video codec to H.264 to preview here.
+          This browser can&apos;t play this video. In Settings, choose &ldquo;Plays everywhere&rdquo; and compress it again.
         </p>
       )}
     </section>

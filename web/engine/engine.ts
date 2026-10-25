@@ -430,25 +430,32 @@ class Engine {
   async replaceInFolder(id: string) {
     const x = this.get(id);
     const link = this.links.get(id);
-    if (!x?.result || !link) throw new Error('This file was not added from a folder, so it cannot be replaced here.');
-    const h = link.dir as FileSystemDirectoryHandle & PermissionHandle;
+    if (!x?.result || !link) throw new Error("This file was added in a way that can't be replaced. Download the compressed copy instead.");
+    const same = (a: string, b: string) => a.replace('jpeg', 'jpg') === b.replace('jpeg', 'jpg');
+    const sameType = same(x.ext, x.result.outputExt);
+    // A single picked file can only be overwritten; it can't be renamed to a new type.
+    if (!link.dir && !sameType) throw new Error(`The compressed photo is a different file type (.${x.result.outputExt}), so it can't replace this one. Download it instead, or choose "Optimised JPEG" in Settings.`);
+    const h = (link.dir ?? link.file) as FileSystemHandle & PermissionHandle;
     let p = (await h.queryPermission?.({ mode: 'readwrite' })) ?? 'granted';
     if (p !== 'granted') p = (await h.requestPermission?.({ mode: 'readwrite' })) ?? 'denied';
-    if (p !== 'granted') throw new Error('Compressly needs permission to change files in that folder.');
+    if (p !== 'granted') throw new Error('Compressly needs your OK to change this file. Tap Replace again and choose Allow.');
     const out = await readOutput(id, x.result.outputExt);
     if (!out) throw new Error('The compressed copy is missing. Compress the file again.');
 
-    const same = (a: string, b: string) => a.replace('jpeg', 'jpg') === b.replace('jpeg', 'jpg');
     let handle = link.file;
     let name = link.file.name;
-    if (!same(x.ext, x.result.outputExt)) {
+    if (!sameType && link.dir) {
       name = `${name.replace(/\.[^.]+$/, '')}.${x.result.outputExt}`;
       handle = await link.dir.getFileHandle(name, { create: true });
     }
-    const w = await (handle as FileSystemFileHandle & { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
-    await w.write(out);
-    await w.close();
-    if (handle !== link.file) await link.dir.removeEntry(link.file.name);
+    try {
+      const w = await (handle as FileSystemFileHandle & { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
+      await w.write(out);
+      await w.close();
+    } catch {
+      throw new Error("This phone or browser didn't let Compressly change the file (files from cloud photos can't be changed). The original is untouched. Use Download instead.");
+    }
+    if (handle !== link.file && link.dir) await link.dir.removeEntry(link.file.name);
 
     const newLink = { file: handle, dir: link.dir };
     this.links.set(id, newLink);
