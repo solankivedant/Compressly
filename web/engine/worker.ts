@@ -216,24 +216,33 @@ async function compressPhoto(item: MediaItem, file: File, s: Settings, stage: St
     throw new Error(/heic|heif/i.test(file.type + file.name) ? "This browser can't open HEIC photos. Try Safari, or choose JPEG on the phone." : "This browser can't open this photo.");
   }
   stage('compressing', 0.3);
-  let data: ArrayBuffer, ext: string, mime: string, method: string;
-  if (s.photoFormat === 'jpeg') {
-    ext = 'jpg';
-    mime = 'image/jpeg';
-    method = 'JPEG (mozjpeg) · quality 90';
-    data = await encodeJpeg(img, { quality: 90 });
-  } else {
-    ext = 'avif';
-    mime = 'image/avif';
-    const q = s.preset === 'high' ? 70 : s.preset === 'balanced' ? 60 : 50;
-    method = `AVIF (stands in for HEIC) · quality ${q}`;
-    data = await encodeAvif(img, { quality: q, speed: 7 });
-  }
+  const jpeg = s.photoFormat === 'jpeg';
+  const ext = jpeg ? 'jpg' : 'avif';
+  const mime = jpeg ? 'image/jpeg' : 'image/avif';
+  const encode = (q: number) => (jpeg ? encodeJpeg(img, { quality: q }) : encodeAvif(img, { quality: q, speed: 7 }));
+  const measure = async (bytes: ArrayBuffer) => {
+    const out = await pixels(new Blob([bytes], { type: mime }));
+    if (out.width !== img.width || out.height !== img.height) throw new Error('The compressed photo came out a different size. Nothing was changed.');
+    return ssim(luma(img.data, img.width, img.height), luma(out.data, out.width, out.height), img.width, img.height);
+  };
 
+  let q = jpeg ? 90 : s.preset === 'high' ? 70 : s.preset === 'balanced' ? 60 : 50;
+  let data = await encode(q);
   stage('checking', 0.3);
-  const out = await pixels(new Blob([data], { type: mime }));
-  if (out.width !== img.width || out.height !== img.height) throw new Error('The compressed photo came out a different size. Nothing was changed.');
-  const score = ssim(luma(img.data, img.width, img.height), luma(out.data, out.width, out.height), img.width, img.height);
+  let score = await measure(data);
+  // Like videos, one retry at higher quality when the first try misses the bar, if it is still smaller.
+  if (score < minSsim) {
+    stage('compressing', 0.6);
+    const q2 = jpeg ? 95 : q + 15;
+    const data2 = await encode(q2);
+    if (data2.byteLength < file.size) {
+      stage('checking', 0.7);
+      const score2 = await measure(data2);
+      notes.push(`First try scored ${score.toFixed(4)} (needs ${minSsim}), so it was retried at quality ${q2}.`);
+      if (score2 > score) [data, score, q] = [data2, score2, q2];
+    }
+  }
+  const method = jpeg ? `JPEG (mozjpeg) · quality ${q}` : `AVIF (stands in for HEIC) · quality ${q}`;
 
   stage('saving', 0.5);
   const writer = await openOutputWriter(item.id, ext);

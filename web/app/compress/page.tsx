@@ -135,7 +135,7 @@ export default function CompressPage() {
             .then((found) => (found ? addLinked(found) : addFiles(plain)));
         }}
         onClick={(e) => {
-          // Without links (or for "Use the photo picker"), the hidden input opens instead.
+          // Without links (iPhone, older browsers), the hidden input opens instead.
           if (!linkOk || e.target === input.current) return;
           e.preventDefault();
           void pickFiles().then(addLinked);
@@ -153,11 +153,6 @@ export default function CompressPage() {
         {folderOk && (
           <button className="btn small" onClick={() => void openFolder()} disabled={!!adding}>
             <Icon name="media" size={16} /> Open a folder
-          </button>
-        )}
-        {linkOk && dev.phone && (
-          <button className="btn ghost small" onClick={() => input.current?.click()} disabled={!!adding}>
-            Use the photo picker (save copies only)
           </button>
         )}
       </div>
@@ -258,12 +253,13 @@ export default function CompressPage() {
       )}
 
       {ready.length > 0 && (
-        <Link href="/review" className="banner info row-between">
+        <Link href="/media" className="banner good row-between">
           <span>
-            <strong>{ready.length} ready to free</strong> · {formatSize(ready.reduce((n, x) => n + x.originalBytes - (x.result?.outputBytes ?? 0), 0))}
+            <Icon name="checkCircle" size={14} /> <strong>{ready.length} compressed {ready.length === 1 ? 'file is' : 'files are'} in Media</strong> · replace the
+            originals there to free {formatSize(ready.reduce((n, x) => n + x.originalBytes - (x.result?.outputBytes ?? 0), 0))}
           </span>
           <span className="row-between" style={{ gap: 4 }}>
-            Review <Icon name="chevron" size={16} />
+            Open Media <Icon name="chevron" size={16} />
           </span>
         </Link>
       )}
@@ -337,7 +333,7 @@ export default function CompressPage() {
       )}
 
       {todo.length === 0 && active.length === 0 && !adding && items.length > 0 && (
-        <p className="trust">Everything you added has been compressed. Add more above.</p>
+        <p className="trust">All done. Your files are in Media.</p>
       )}
     </>
   );

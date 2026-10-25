@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useDevice } from '@/components/device';
@@ -12,8 +13,6 @@ import { engine } from '@/engine/engine';
 import { compressedName, formatDate, formatDuration, formatEta, formatSize, savingPct } from '@/lib/format';
 import { estimateSeconds, jobFraction, liveSpeeds, planQueue, qualityWords } from '@/lib/rules';
 import { ACTIVE_STATES } from '@/lib/types';
-
-const sameType = (a: string, b?: string) => !!b && a.replace('jpeg', 'jpg') === b.replace('jpeg', 'jpg');
 
 export default function FileDetail() {
   const { id } = useParams<{ id: string }>();
@@ -60,32 +59,22 @@ export default function FileDetail() {
       const r = await engine.enqueue([id]);
       if (r.missing.length) throw new Error('The original is no longer available on this page. Add the file again to compress it.');
     });
-  const canReplace = !!item.inFolder && engine.availability(id) !== 'gone' && (!!item.folderPath?.includes('/') || sameType(item.ext, r?.outputExt));
-  const replaceHint = item.inFolder
-    ? 'This photo became a different file type, so download it instead.'
-    : dev.ios
-      ? "iPhone browsers can't change your gallery. Download it, then delete the original."
-      : 'To replace the original, add the file again with "Choose photos and videos" in Chrome.';
-  const saveCompressed = (share: boolean) =>
+  const canReplace = engine.canReplace(id);
+  // Where the original lives, as far as the browser tells us (a folder path, or just the file's name).
+  const where = item.folderPath?.includes('/') ? item.folderPath.replace(/\/[^/]+$/, '') : 'its original place';
+  const lowQuality = !!r && r.ssim < r.minSsim;
+  const saveCopy = () =>
     act(async () => {
       const f = await engine.output(id);
       if (!f) throw new Error('The compressed copy is missing. Compress the file again.');
-      const how = await saveFile(f, compressedName(item), share);
-      if (how === 'downloaded') setNote('Saved to Downloads.');
-      if (how === 'shared') setNote('Saved.');
-      if (how !== 'cancelled' && item.state === 'ready') await engine.decide(id, 'accept');
-    });
-  const saveOriginal = () =>
-    act(async () => {
-      const f = await engine.original(id, true);
-      if (!f) throw new Error('The original is not available any more.');
-      await saveFile(f, item.name, false);
+      const how = await saveFile(f, compressedName(item), true);
+      if (how !== 'cancelled') setNote('Saved. Delete the original from your gallery to free the space.');
     });
   const replace = () =>
     act(async () => {
-      if (!confirm(`Replace "${item.name}" with the smaller copy? This can't be undone.`)) return;
+      if (!confirm(`Replace "${item.name}" on your device with the ${savingPct(item.originalBytes, r!.outputBytes)}% smaller copy? This can't be undone.`)) return;
       await engine.replaceInFolder(id);
-      setNote('Done. The original now takes less space.');
+      setNote(`Replaced in ${where}. No extra copy is kept, so the space is freed.`);
     });
 
   return (
@@ -125,53 +114,60 @@ export default function FileDetail() {
             <span className="muted">
               smaller · {formatSize(item.originalBytes)} → {formatSize(r.outputBytes)}
             </span>
-            <span className={`chip ${r.ssim >= r.minSsim ? 'good' : 'warn'}`}>
-              <Icon name={r.ssim >= r.minSsim ? 'check' : 'info'} size={14} /> {qualityWords(r.ssim)}
+            <span className={`chip ${lowQuality ? 'warn' : 'good'}`}>
+              <Icon name={lowQuality ? 'info' : 'check'} size={14} /> {lowQuality ? 'Check closely' : qualityWords(r.ssim)}
             </span>
           </div>
 
+          {item.state === 'ready' && (
+            <div className="banner good">
+              <Icon name="checkCircle" size={14} /> Compressed and saved in <strong>Media</strong>.{' '}
+              {lowQuality ? 'Some fine detail may be softer: zoom in below before replacing.' : 'Compare below, then replace the original.'}
+            </div>
+          )}
           {item.state === 'freed' && (
             <span className="chip accent" style={{ justifySelf: 'start' }}>
-              <Icon name="checkCircle" size={14} /> {item.replaced ? 'Original replaced' : 'Done'} · saved {formatSize(item.originalBytes - r.outputBytes)}
+              <Icon name="checkCircle" size={14} /> {item.replaced ? `Replaced in ${where}` : 'Done'} · saved {formatSize(item.originalBytes - r.outputBytes)}
             </span>
           )}
 
           {(item.state === 'ready' || item.state === 'freed') && !item.replaced && (
             <div className="stack" style={{ gap: 8 }}>
-              {canReplace && (
+              {canReplace ? (
                 <button className="btn primary block" onClick={() => void replace()}>
                   <Icon name="compress" size={18} /> Replace original · free {formatSize(item.originalBytes - r.outputBytes)}
                 </button>
+              ) : dev.ios ? (
+                <>
+                  <button className="btn primary block" onClick={() => void saveCopy()}>
+                    <Icon name="upload" size={18} /> Save to Photos
+                  </button>
+                  <span className="muted" style={{ fontSize: 13, textAlign: 'center' }}>
+                    iPhone browsers can&apos;t replace files. Delete the original afterwards to free the space.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Link href="/compress" className="btn primary block">
+                    <Icon name="upload" size={18} /> Add it again to replace the original
+                  </Link>
+                  <span className="muted" style={{ fontSize: 13, textAlign: 'center' }}>
+                    {item.inFolder
+                      ? 'This photo became a different file type. Choose "Optimised JPEG" in Settings and compress it again.'
+                      : 'This file was added without permission to change it. Pick it again on Compress and allow access.'}
+                  </span>
+                </>
               )}
-              <div className="two">
-                <button className={`btn block ${canReplace ? '' : 'primary'}`} onClick={() => void saveCompressed(false)}>
-                  <Icon name="download" size={18} /> Download
-                </button>
-                {dev.phone ? (
-                  <button className="btn block" onClick={() => void saveCompressed(true)}>
-                    <Icon name="upload" size={18} /> Share / Save
-                  </button>
-                ) : item.state === 'ready' ? (
-                  <button className="btn block" onClick={() => void decide('keepOriginal')}>
-                    Keep original
-                  </button>
-                ) : null}
-              </div>
-              {dev.phone && item.state === 'ready' && (
+              {item.state === 'ready' && (
                 <button className="btn ghost small" style={{ justifySelf: 'center' }} onClick={() => void decide('keepOriginal')}>
                   Keep original instead
                 </button>
-              )}
-              {!canReplace && (
-                <span className="muted" style={{ fontSize: 13, textAlign: 'center' }}>
-                  {replaceHint}
-                </span>
               )}
             </div>
           )}
           {item.state === 'notWorthIt' && (
             <div className="banner info">
-              <strong>Not worth compressing.</strong> The saving was too small or the quality dropped, so your original is kept as is.
+              <strong>Not smaller.</strong> The compressed copy came out the same size or bigger, so your original is kept as is.
             </div>
           )}
         </section>
@@ -270,11 +266,6 @@ export default function FileDetail() {
             <div><dt>Added</dt><dd>{formatDate(item.addedAt)}</dd></div>
           </dl>
         </details>
-        {origUrl && !item.replaced && (
-          <button className="btn ghost small" style={{ justifySelf: 'start' }} onClick={() => void saveOriginal()}>
-            <Icon name="download" size={16} /> Download original
-          </button>
-        )}
       </section>
       <TrustBadge />
     </>

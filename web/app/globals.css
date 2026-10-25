@@ -376,3 +376,23 @@ details.more[open] summary { margin-bottom: 12px; }
   .two .stat-value .num { font-size: 28px; }
   .two .stat { padding: 14px; }
 }
+
+/* ---------- Compare: zoom and full screen ---------- */
+.cmp-frame.grab { touch-action: none; cursor: grab; }
+.cmp-frame.grab:active { cursor: grabbing; }
+.zoom-ctl { display: flex; align-items: center; gap: 6px; }
+.zoom-ctl .icon-btn:disabled { opacity: 0.4; cursor: default; }
+.zoom-val { min-width: 52px; height: 40px; border: 0; background: transparent; font-weight: 700; cursor: pointer; }
+.split-bar { width: 100%; accent-color: var(--primary); }
+.compare.cmp-full {
+  position: fixed; inset: 0; z-index: 100; border-radius: 0; border: 0; overflow: auto;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); grid-template-rows: auto 1fr auto; background: var(--card);
+}
+.cmp-full figure { min-height: 0; }
+.cmp-full .cmp-frame, .cmp-full .cmp-side.tall .cmp-frame {
+  width: 100%; height: 100%; max-height: none; aspect-ratio: auto; min-height: 0;
+}
+.cmp-full > figure { grid-template-rows: 1fr auto auto; height: 100%; }
+.cmp-full .cmp-side { min-height: 0; height: 100%; grid-template-columns: 1fr 1fr; }
+.cmp-full:not(.is-tall) .cmp-side { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+.cmp-full .cmp-side figure { grid-template-rows: 1fr auto; }

@@ -13,6 +13,7 @@ import { formatSize } from '@/lib/format';
 export default function ReviewPage() {
   const { data } = useLibrary();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const ready = (data?.items ?? []).filter((x) => x.state === 'ready');
   const total = ready.reduce((n, x) => n + x.originalBytes - (x.result?.outputBytes ?? 0), 0);
 
@@ -20,10 +21,16 @@ export default function ReviewPage() {
     await engine.decide(id, action);
   };
 
-  const acceptAll = async () => {
+  // Replacing writes each small copy over its original on the device, so nothing is stored twice.
+  const replaceable = ready.filter((x) => engine.canReplace(x.id));
+  const replaceAll = async () => {
+    if (!confirm(`Replace ${replaceable.length} originals on your device with the smaller copies? This can't be undone.`)) return;
     setBusy(true);
+    setError('');
     try {
-      for (const x of ready) await decide(x.id, 'accept');
+      for (const x of replaceable) await engine.replaceInFolder(x.id);
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -42,7 +49,8 @@ export default function ReviewPage() {
         </section>
       ) : (
         <>
-          <p className="muted">Tap a file to compare, replace or download it.</p>
+          <p className="muted">Tap a file to compare and zoom in before replacing.</p>
+          {error && <div className="banner warn">{error}</div>}
           <section className="card" style={{ padding: '4px 12px' }}>
             <div className="list">
               {ready.map((x) => (
@@ -62,8 +70,8 @@ export default function ReviewPage() {
             <span>
               <strong>{ready.length} files</strong> <span className="muted">· {formatSize(total)}</span>
             </span>
-            <button className="btn primary" disabled={busy} onClick={() => void acceptAll()}>
-              <Icon name="check" size={18} /> Use compressed · free {formatSize(total)}
+            <button className="btn primary" disabled={busy || replaceable.length === 0} onClick={() => void replaceAll()}>
+              <Icon name="check" size={18} /> Replace {replaceable.length === ready.length ? 'all' : replaceable.length} · free {formatSize(replaceable.reduce((n, x) => n + x.originalBytes - (x.result?.outputBytes ?? 0), 0))}
             </button>
           </div>
         </>

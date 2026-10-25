@@ -101,6 +101,8 @@ class Engine {
       }
       // Jobs that were running when the page closed go back to "not compressed yet".
       for (const x of this.items) {
+        // Earlier versions turned down smaller copies that missed the quality bar; offer them now.
+        if (x.state === 'notWorthIt' && x.result && x.result.outputBytes < x.originalBytes) Object.assign(x, { state: 'ready', reason: undefined });
         if (ACTIVE_STATES.includes(x.state)) Object.assign(x, { state: 'new', progress: 0, stageStartedAt: undefined, attempt: undefined });
         if (x.inFolder) {
           const link = await db.get<OriginalLink>('handles', x.id).catch(() => undefined);
@@ -312,9 +314,9 @@ class Engine {
       if (x.kind === 'photo' && x.startedAt) {
         this.recordSpeed(speedKey('photo', x.queuedWith ?? this.settings), workPixels(x) / Math.max(0.05, (Date.now() - x.startedAt) / 1000 - 0.3));
       }
-      let reason: string | undefined;
-      if (r.ssim < r.minSsim) reason = `Quality score ${r.ssim.toFixed(4)} is below ${r.minSsim} for this preset.`;
-      else if (r.outputBytes >= x.originalBytes) reason = 'The compressed copy would not be smaller.';
+      // Only "not smaller" is a dead end. A copy below the quality bar is still offered, with a "check closely"
+      // warning, so the user can zoom in and decide (the web version is for judging results by eye).
+      const reason = r.outputBytes >= x.originalBytes ? 'The compressed copy would not be smaller.' : undefined;
       this.update(m.id, { state: reason ? 'notWorthIt' : 'ready', progress: 1, result: r, reason, decidedAt: undefined, stageStartedAt: undefined });
       this.batch.done++;
       if (!reason) this.batch.freed += x.originalBytes - r.outputBytes;
@@ -390,7 +392,7 @@ class Engine {
     this.lastStatusAt = Date.now();
     void notify({
       title: `${done} of ${total} done`,
-      body: `${kind === 'video' ? 'Video' : 'Photo'} ${saved !== null ? `saved ${formatSize(saved)}` : 'kept as is (not worth compressing)'}. ${formatEta(this.queueLeft())} left.`,
+      body: `${kind === 'video' ? 'Video' : 'Photo'} ${saved !== null ? `is in Media · ${formatSize(saved)} smaller` : 'kept as is'}. ${formatEta(this.queueLeft())} left.`,
       tag: 'status',
       silent: true,
       url: '/compress',
@@ -403,7 +405,7 @@ class Engine {
     this.batch = { total: 0, done: 0, freed: 0, failed: 0 };
     await notify({
       title: 'All done',
-      body: `${total} ${total === 1 ? 'file' : 'files'} checked${freed > 0 ? ` · ${formatSize(freed)} ready to free` : ''}${failed ? ` · ${failed} could not be compressed` : ''}. Tap to review.`,
+      body: `${total} ${total === 1 ? 'file is' : 'files are'} in Media${freed > 0 ? ` · ${formatSize(freed)} to free` : ''}${failed ? ` · ${failed} failed` : ''}. Tap to replace the originals.`,
       tag: 'status',
       renotify: true,
       url: freed > 0 ? '/review' : '/compress',
@@ -427,6 +429,15 @@ class Engine {
    * Same file type: the file is overwritten in place. Different type (photo → AVIF): a new file is written next to
    * it and the original is removed. Can't be undone.
    */
+  /** True when the compressed copy can be written over the original on the device. */
+  canReplace(id: string): boolean {
+    const x = this.get(id);
+    const link = this.links.get(id);
+    if (!x?.result || !link || x.replaced || !['ready', 'freed'].includes(x.state)) return false;
+    const same = x.ext.replace('jpeg', 'jpg') === x.result.outputExt.replace('jpeg', 'jpg');
+    return same || !!link.dir;
+  }
+
   async replaceInFolder(id: string) {
     const x = this.get(id);
     const link = this.links.get(id);
@@ -461,6 +472,8 @@ class Engine {
     this.links.set(id, newLink);
     await db.put('handles', id, newLink).catch(() => {});
     this.originals.delete(id);
+    // The device now holds the small file in the original's place; keeping our copy too would use the space again.
+    await removeOutput(id, x.result.outputExt).catch(() => {});
     this.update(id, { state: 'freed', replaced: true, decidedAt: Date.now(), folderPath: x.folderPath?.replace(/[^/]+$/, name) });
   }
 

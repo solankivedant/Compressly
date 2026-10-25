@@ -2,13 +2,12 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { useDevice } from '@/components/device';
 import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
 import { Empty, FileRow, Segmented, stateWords } from '@/components/ui';
-import { saveFile, useLibrary } from '@/components/useLibrary';
+import { useLibrary } from '@/components/useLibrary';
 import { engine } from '@/engine/engine';
-import { compressedName, formatSize } from '@/lib/format';
+import { formatSize } from '@/lib/format';
 import type { ItemState, Kind, MediaItem } from '@/lib/types';
 
 type Tab = 'all' | Kind;
@@ -23,11 +22,10 @@ const CHIP: Partial<Record<ItemState, string>> = {
 };
 
 /** Short chip words; the full wording is on the file's page. */
-const SHORT: Partial<Record<ItemState, string>> = { notWorthIt: 'Kept as is', failed: 'Failed', new: 'Not yet' };
+const SHORT: Partial<Record<ItemState, string>> = { notWorthIt: 'Kept as is', failed: 'Failed', new: 'Not yet', ready: 'Compressed' };
 
 export default function MediaPage() {
   const { data } = useLibrary();
-  const dev = useDevice();
   const [tab, setTab] = useState<Tab>('all');
   const [error, setError] = useState('');
   const items = (data?.items ?? []).filter((x) => tab === 'all' || x.kind === tab);
@@ -37,13 +35,15 @@ export default function MediaPage() {
   const remove = (x: MediaItem) => {
     if (confirm(`Remove "${x.name}" from Compressly? The original on your device is not touched.`)) void engine.remove(x.id);
   };
-  const download = async (x: MediaItem) => {
+  const replace = async (x: MediaItem) => {
+    if (!confirm(`Replace "${x.name}" on your device with the smaller copy? This can't be undone.`)) return;
     setError('');
-    const f = await engine.output(x.id);
-    if (!f) return setError('The compressed copy is missing. Compress the file again.');
-    await saveFile(f, compressedName(x), false);
+    try {
+      await engine.replaceInFolder(x.id);
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
-  const hasOutput = (x: MediaItem) => !!x.result && ['ready', 'freed'].includes(x.state) && !x.replaced;
 
   return (
     <>
@@ -81,9 +81,9 @@ export default function MediaPage() {
                 extra={<span className={`chip small ${CHIP[x.state] ?? 'primary'}`} style={{ justifySelf: 'start', marginTop: 4 }}>{SHORT[x.state] ?? stateWords(x.state)}</span>}
                 trailing={
                   <span className="row-actions">
-                    {hasOutput(x) && (
-                      <button className="icon-btn" aria-label={`Download ${x.name}`} title={dev.phone ? 'Download' : 'Download compressed copy'} onClick={() => void download(x)}>
-                        <Icon name="download" size={18} />
+                    {engine.canReplace(x.id) && (
+                      <button className="btn primary small" aria-label={`Replace ${x.name}`} onClick={() => void replace(x)}>
+                        Replace
                       </button>
                     )}
                     <button className="icon-btn" aria-label={`Remove ${x.name}`} title="Remove" onClick={() => remove(x)}>
