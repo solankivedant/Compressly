@@ -23,6 +23,7 @@ import {
 } from 'mediabunny';
 import { DOC_JPEG_QUALITY, DOC_MIME, PHOTO_FORMATS, PRESETS, checkFrames, videoTargetKbps } from '@/lib/rules';
 import type { ItemResult, JobIn, JobOut, MediaItem, Settings } from '@/lib/types';
+import { mp4Time, setVideoTime, videoCreationTime, withPhotoDate } from './dates';
 import { openOutputWriter } from './opfs';
 import { luma, ssim } from './ssim';
 
@@ -91,7 +92,7 @@ function videoContainer(item: MediaItem) {
   return { ext: item.ext === 'm4v' ? 'm4v' : 'mp4', mime: 'video/mp4', format: () => new Mp4OutputFormat({ fastStart: false }) };
 }
 
-async function encodeOnce(item: MediaItem, file: File, codec: 'hevc' | 'avc', kbps: number, stage: Stage, job: { conversion?: Conversion }) {
+async function encodeOnce(item: MediaItem, file: File, codec: 'hevc' | 'avc', kbps: number, time: number, stage: Stage, job: { conversion?: Conversion }) {
   const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(file) });
   const box = videoContainer(item);
   const writer = await openOutputWriter(item.id, box.ext);
@@ -115,6 +116,8 @@ async function encodeOnce(item: MediaItem, file: File, codec: 'hevc' | 'avc', kb
       } catch {} // cancelling is handled by conversion.cancel()
     };
     await conversion.execute();
+    // The new file is stamped with today; put the original's recording time back so the gallery keeps its place.
+    await setVideoTime(writer, time);
     const audioNote = conversion.utilizedTracks.some((t) => t.type === 'audio') ? null : item.hasAudio ? 'The sound track could not be kept.' : null;
     return { bytes: writer.close(), audioNote };
   } catch (e) {
@@ -173,13 +176,14 @@ async function compressVideo(item: MediaItem, file: File, s: Settings, stage: St
   const target = videoTargetKbps(s.preset, s.videoCodec, { width: item.width, height: item.height, fps: item.fps ?? 30, bitrateKbps: item.bitrateKbps ?? 0 });
   if (target.capped) notes.push('The source bitrate is already low, so the target was capped at 60% of it.');
   let { codec, kbps, fellBack } = await pickCodec(s, item, target.kbps);
+  const time = (await videoCreationTime(file).catch(() => null)) ?? mp4Time(file.lastModified);
   if (fellBack) notes.push("This device can't encode HEVC in the browser, so H.264 was used at 1.4× the bitrate.");
   let score = 0;
   let bytes = 0;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     stage('compressing', 0);
-    const r = await encodeOnce(item, file, codec, kbps, stage, job);
+    const r = await encodeOnce(item, file, codec, kbps, time, stage, job);
     bytes = r.bytes;
     if (r.audioNote && !notes.includes(r.audioNote)) notes.push(r.audioNote);
     stage('checking', 0);
@@ -221,7 +225,10 @@ async function pixels(blob: Blob) {
 /** Same pixel size, turned upright. JPEG through mozjpeg; "HEIC" through AVIF (browsers can't show HEIC). */
 async function compressPhoto(item: MediaItem, file: File, s: Settings, stage: Stage): Promise<ItemResult> {
   const started = Date.now();
-  const notes = [PHOTO_FORMATS[s.photoFormat].webNote, 'Camera details (date, place) are not copied into the compressed photo on the web.'];
+  const notes = [
+    PHOTO_FORMATS[s.photoFormat].webNote,
+    s.photoFormat === 'jpeg' ? 'Camera details (date taken, place) are kept.' : 'Camera details (date, place) are not copied into HEIC on the web.',
+  ];
   const minSsim = PRESETS[s.preset].minSsim;
 
   stage('compressing', 0.1);
@@ -262,7 +269,9 @@ async function compressPhoto(item: MediaItem, file: File, s: Settings, stage: St
 
   stage('saving', 0.5);
   const writer = await openOutputWriter(item.id, ext);
-  writer.writeAll(new Uint8Array(data));
+  // JPEG: the original's camera details (date taken, place) go back in, so the gallery keeps the photo on its date.
+  const bytes = jpeg ? withPhotoDate(new Uint8Array(await file.arrayBuffer()), new Uint8Array(data), file.lastModified) : new Uint8Array(data);
+  writer.writeAll(bytes);
   const outputBytes = writer.close();
   return { outputBytes, outputExt: ext, outputMime: mime, ssim: score, minSsim, preset: s.preset, method, seconds: (Date.now() - started) / 1000, notes, finishedAt: Date.now() };
 }

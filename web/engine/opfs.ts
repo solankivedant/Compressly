@@ -49,6 +49,17 @@ export async function openOutputWriter(id: string, ext: string) {
   });
   return {
     stream,
+    get size() {
+      return size;
+    },
+    read(at: number, len: number) {
+      const buf = new Uint8Array(len);
+      sync.read(buf, { at });
+      return buf;
+    },
+    write(data: Uint8Array, at: number) {
+      sync.write(data, { at });
+    },
     writeAll(data: Uint8Array) {
       sync.write(data, { at: 0 });
       size = data.byteLength;
@@ -62,6 +73,7 @@ export async function openOutputWriter(id: string, ext: string) {
 }
 
 interface SyncHandle {
+  read(into: Uint8Array, opts: { at: number }): number;
   write(data: Uint8Array, opts: { at: number }): number;
   truncate(size: number): void;
   flush(): void;
