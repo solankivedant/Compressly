@@ -96,8 +96,20 @@ export function ScreenHeader({ title, subtitle, back, actions }: { title: string
         <h1>{title}</h1>
       </div>
       {actions}
+      <GuideButton />
       <ThemeToggle />
     </header>
+  );
+}
+
+/** Small ⓘ in the header that opens the Format guide (hidden on the guide itself). */
+function GuideButton() {
+  const path = usePathname();
+  if (path === '/formats') return null;
+  return (
+    <Link href="/formats" className="icon-btn guide-btn" aria-label="Format guide" title="Format guide: which format to pick">
+      <Icon name="info" size={20} />
+    </Link>
   );
 }
 

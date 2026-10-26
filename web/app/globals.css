@@ -493,11 +493,11 @@ img, video { max-width: 100%; }
 .opt-fig.tertiary b { color: var(--tertiary); }
 
 /* ---------- Home: the four small numbers in one slim row ---------- */
-.mini-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 10px 4px; border-radius: var(--r-card); background: var(--card); border: 1px solid var(--border-subtle); }
+.mini-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 12px 4px; border-radius: var(--r-card); background: var(--card); border: 1px solid var(--border-subtle); }
 .mini { padding: 2px 6px; border: 0; border-radius: 0; background: none; text-align: center; justify-items: center; }
 .mini + .mini { border-left: 1px solid var(--border-subtle); }
-.mini b { font-size: 17px; }
-.mini span { font-size: 11px; line-height: 1.25; }
+.mini b { font-size: 22px; line-height: 1.25; }
+.mini span { font-size: 13px; line-height: 1.3; }
 @media (max-width: 640px) { .mini-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 /* Figures are typical, not exact: a small grey "UP TO" sits above each. */
@@ -559,3 +559,4 @@ img, video { max-width: 100%; }
 .guide-card:hover { background: var(--raised); }
 .mobile-only { display: none; }
 @media (max-width: 860px) { .mobile-only { display: flex; } }
+.guide-btn { align-self: center; color: var(--primary); }
