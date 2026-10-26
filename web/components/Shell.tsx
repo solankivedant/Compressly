@@ -112,10 +112,10 @@ function ThemeToggle() {
       onClick={() => applyTheme(dark ? 'light' : 'dark')}
     >
       <span className={dark ? '' : 'on'}>
-        <Icon name="sun" size={14} />
+        <Icon name="sun" size={20} />
       </span>
       <span className={dark ? 'on' : ''}>
-        <Icon name="moon" size={14} />
+        <Icon name="moon" size={20} />
       </span>
     </button>
   );
