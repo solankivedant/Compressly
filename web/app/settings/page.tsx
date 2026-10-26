@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { askConfirm } from '@/components/Dialog';
 import Icon from '@/components/Icon';
@@ -37,7 +38,7 @@ function Option<T extends string>(p: { value: T; current: T; onPick: (v: T) => v
       </span>
       {p.figures?.map((f, i) => (
         <span key={f.label} className={`opt-fig ${i ? 'sep' : ''} ${on && f.tone ? f.tone : ''}`}>
-          <small className="upto">UP TO</small>
+          <small className="upto">UPTO</small>
           <b>{f.value}</b>
           <small>{f.label}</small>
         </span>
@@ -61,6 +62,18 @@ export default function SettingsPage() {
   return (
     <>
       <ScreenHeader title="Settings" />
+
+      {/* On computers the guide is in the sidebar. */}
+      <Link href="/formats" className="card guide-card mobile-only">
+        <span className="dialog-icon" style={{ width: 40, height: 40 }}>
+          <Icon name="info" size={20} />
+        </span>
+        <span className="grow" style={{ display: 'grid' }}>
+          <strong>Format guide</strong>
+          <span className="muted" style={{ fontSize: 14 }}>HEVC or H.264 · HEIC or JPEG: pros and cons</span>
+        </span>
+        <Icon name="chevron" size={18} />
+      </Link>
 
       {s && (
         <>

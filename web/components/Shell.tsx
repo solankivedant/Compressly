@@ -17,6 +17,7 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
 ];
 
 function isActive(path: string, href: string) {
+  if (href === '/settings') return path.startsWith('/settings') || path === '/formats';
   return href === '/' ? path === '/' || path === '/history' || path === '/review' : path.startsWith(href);
 }
 
@@ -47,6 +48,10 @@ export default function Shell({ children }: { children: ReactNode }) {
           <Link href="/history" className={`side-link ${path === '/history' ? 'on' : ''}`}>
             <Icon name="history" />
             History
+          </Link>
+          <Link href="/formats" className={`side-link ${path === '/formats' ? 'on' : ''}`}>
+            <Icon name="info" />
+            Format guide
           </Link>
         </nav>
         <p className="sidebar-foot">

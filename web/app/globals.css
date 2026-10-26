@@ -453,7 +453,7 @@ img, video { max-width: 100%; }
 @media (max-width: 640px) {
   .media-list .file-row { flex-wrap: wrap; row-gap: 8px; }
   .media-list .row-link { flex: 1 1 100%; }
-  .media-list .row-actions { flex: 1 1 100%; justify-content: flex-end; }
+  .media-list .row-actions { flex: 1 1 100%; justify-content: flex-end; flex-wrap: wrap; }
 }
 
 /* ---------- Confirm dialog ---------- */
@@ -538,3 +538,22 @@ img, video { max-width: 100%; }
 /* Dark: coloured numbers on plain cards use the lighter shades, which have enough contrast. */
 :root[data-theme='dark'] .opt-fig.primary b { color: #9fb0ff; }
 :root[data-theme='dark'] .opt-fig.tertiary b { color: #ffa384; }
+
+/* ---------- Format guide: pros and cons of each format ---------- */
+.pc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .pc-grid { grid-template-columns: 1fr; } }
+.pc-box { display: grid; align-content: start; gap: 10px; padding: 14px; border-radius: var(--r-btn); border: 1px solid; font-size: 14px; }
+.pc-head { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
+.pc-box ul { display: grid; gap: 8px; margin: 0; padding-left: 18px; line-height: 1.45; }
+.pc-pros { background: var(--success-container); border-color: color-mix(in srgb, var(--success) 35%, transparent); color: #0f4d27; }
+.pc-pros .pc-head, .pc-pros li::marker { color: var(--success); }
+.pc-cons { background: var(--error-container); border-color: color-mix(in srgb, var(--error) 35%, transparent); color: #7a1610; }
+.pc-cons .pc-head, .pc-cons li::marker { color: var(--error); }
+:root[data-theme='dark'] .pc-pros { color: #c9f5d9; }
+:root[data-theme='dark'] .pc-cons { color: #ffd0cb; }
+
+/* Settings → Format guide card: phones only, computers have it in the sidebar. */
+.guide-card { display: flex; align-items: center; gap: 12px; }
+.guide-card:hover { background: var(--raised); }
+.mobile-only { display: none; }
+@media (max-width: 860px) { .mobile-only { display: flex; } }

@@ -46,10 +46,15 @@ export function videoTargetKbps(preset: Preset, codec: VideoCodec, src: VideoSou
   const pixels = src.width * src.height;
   const raw = pixels === 3840 * 2160 ? atFps(VIDEO_TABLE[preset].uhd) : atFps(VIDEO_TABLE[preset].fhd) * (pixels / (1920 * 1080));
   const presetKbps = Math.min(60, Math.max(2, raw)) * 1000;
-  const sourceCap = src.bitrateKbps * 0.6;
-  const capped = sourceCap < presetKbps;
-  const kbps = Math.min(presetKbps, sourceCap) * (codec === 'h264' ? 1.4 : 1);
-  return { kbps: Math.round(kbps), capped };
+  // The ×1.4 for H.264 is applied before the cap, so a low-bitrate source can never get a bigger target than 60% of itself.
+  const wanted = presetKbps * (codec === 'h264' ? 1.4 : 1);
+  const sourceCap = src.bitrateKbps ? src.bitrateKbps * 0.6 : Infinity;
+  return { kbps: Math.round(Math.min(wanted, sourceCap)), capped: sourceCap < wanted };
+}
+
+/** The most any attempt may use (H.264 fallback, quality retry): 75% of the source, so the copy stays smaller. */
+export function maxVideoKbps(sourceKbps: number | undefined): number {
+  return sourceKbps ? Math.round(sourceKbps * 0.75) : Infinity;
 }
 
 /** Plain words for a measured SSIM (DESIGN §5.3). */

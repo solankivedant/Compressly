@@ -21,7 +21,7 @@ import {
   StreamTarget,
   canEncodeVideo,
 } from 'mediabunny';
-import { DOC_JPEG_QUALITY, DOC_MIME, PHOTO_FORMATS, PRESETS, checkFrames, videoTargetKbps } from '@/lib/rules';
+import { DOC_JPEG_QUALITY, DOC_MIME, PHOTO_FORMATS, PRESETS, checkFrames, maxVideoKbps, videoTargetKbps } from '@/lib/rules';
 import type { ItemResult, JobIn, JobOut, MediaItem, Settings } from '@/lib/types';
 import { mp4Time, setVideoTime, videoCreationTime, withPhotoDate } from './dates';
 import { openOutputWriter } from './opfs';
@@ -78,10 +78,10 @@ function friendly(err: unknown): string {
 type Stage = (state: 'compressing' | 'checking' | 'saving', progress: number) => void;
 
 /** HEVC if this device can encode it at this size, else H.264 at ×1.4 the bitrate (the app's fallback). */
-async function pickCodec(s: Settings, item: MediaItem, kbps: number) {
+async function pickCodec(s: Settings, item: MediaItem, kbps: number, ceiling: number) {
   const size = { width: item.width, height: item.height, bitrate: kbps * 1000 };
   if (s.videoCodec === 'hevc' && (await canEncodeVideo('hevc', size))) return { codec: 'hevc' as const, kbps, fellBack: false };
-  const avcKbps = s.videoCodec === 'hevc' ? Math.round(kbps * 1.4) : kbps;
+  const avcKbps = s.videoCodec === 'hevc' ? Math.min(Math.round(kbps * 1.4), ceiling) : kbps;
   if (await canEncodeVideo('avc', { ...size, bitrate: avcKbps * 1000 })) return { codec: 'avc' as const, kbps: avcKbps, fellBack: s.videoCodec === 'hevc' };
   throw new Error(`This device can't encode ${item.width}×${item.height} video in the browser.`);
 }
@@ -175,22 +175,35 @@ async function compressVideo(item: MediaItem, file: File, s: Settings, stage: St
   const minSsim = PRESETS[s.preset].minSsim;
   const target = videoTargetKbps(s.preset, s.videoCodec, { width: item.width, height: item.height, fps: item.fps ?? 30, bitrateKbps: item.bitrateKbps ?? 0 });
   if (target.capped) notes.push('The source bitrate is already low, so the target was capped at 60% of it.');
-  let { codec, kbps, fellBack } = await pickCodec(s, item, target.kbps);
+  const ceiling = maxVideoKbps(item.bitrateKbps);
+  let { codec, kbps, fellBack } = await pickCodec(s, item, target.kbps, ceiling);
   const time = (await videoCreationTime(file).catch(() => null)) ?? mp4Time(file.lastModified);
   if (fellBack) notes.push("This device can't encode HEVC in the browser, so H.264 was used at 1.4× the bitrate.");
   let score = 0;
   let bytes = 0;
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  let sizeFixed = false;
+  for (let tries = 1; ; tries++) {
     stage('compressing', 0);
     const r = await encodeOnce(item, file, codec, kbps, time, stage, job);
     bytes = r.bytes;
     if (r.audioNote && !notes.includes(r.audioNote)) notes.push(r.audioNote);
+    // Some device encoders don't keep to the bitrate they're given (often on short or low-bitrate clips) and make a
+    // file about as big as the original, or bigger. Once, aim lower in proportion to how far it overshot.
+    if (!sizeFixed && bytes > item.originalBytes * 0.9) {
+      sizeFixed = true;
+      const next = Math.max(100, Math.round((kbps * item.originalBytes * 0.7) / bytes));
+      notes.push(`This device's encoder made a ${Math.round((bytes / item.originalBytes) * 100)}% size file at ${(kbps / 1000).toFixed(1)} Mbps, so it was redone at ${(next / 1000).toFixed(1)} Mbps.`);
+      kbps = next;
+      continue;
+    }
     stage('checking', 0);
     score = await measureVideo(item, file, await readOutputFile(item.id, videoContainer(item).ext, videoContainer(item).mime), stage);
-    if (score >= minSsim || attempt === 1) break;
-    notes.push(`First try scored ${score.toFixed(4)} (needs ${minSsim}), so it was retried at +25% bitrate.`);
-    kbps = Math.round(kbps * 1.25);
+    // One quality retry at +25%, but never above the ceiling and not after a size fix (that would undo it).
+    if (score >= minSsim || sizeFixed || tries >= 2 || kbps >= ceiling) break;
+    const next = Math.min(Math.round(kbps * 1.25), ceiling);
+    notes.push(`First try scored ${score.toFixed(4)} (needs ${minSsim}), so it was retried at ${(next / 1000).toFixed(1)} Mbps.`);
+    kbps = next;
   }
   notes.push(`Quality measured on ${checkFrames(item.durationSec ?? 0)} frames spread through the video.`);
 

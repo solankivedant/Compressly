@@ -94,6 +94,9 @@ export default function MediaPage() {
                   <span className="row-actions">
                     {(x.state === 'ready' || x.state === 'freed') && !x.replaced && (
                       <>
+                        <button className="btn ghost small" aria-label={`Keep the original of ${x.name} and delete the compressed copy`} title="Keep the original, delete the compressed copy" onClick={() => void run(async () => (await engine.decide(x.id, 'keepOriginal'), 'Kept the original. The compressed copy was deleted.'))}>
+                          Keep original
+                        </button>
                         <button className="btn small" aria-label={`Keep both: download the compressed copy of ${x.name}`} title="Download the new copy and keep the original" onClick={() => void run(() => downloadCopy(x))}>
                           <Icon name="download" size={16} /> Keep both
                         </button>

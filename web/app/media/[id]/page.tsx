@@ -61,6 +61,7 @@ export default function FileDetail() {
   // Where the original lives, as far as the browser tells us (a folder path, or just the file's name).
   const where = item.folderPath?.includes('/') ? item.folderPath.replace(/\/[^/]+$/, '') : 'its original place';
   const lowQuality = !!r && r.ssim < r.minSsim;
+  const bigger = !!r && r.outputBytes >= item.originalBytes;
   const replace = () =>
     act(async () => {
       const msg = await replaceOnDevice(item);
@@ -104,14 +105,16 @@ export default function FileDetail() {
         <section className="card stack">
           <div className="big-saving">
             <span className="num" style={{ color: item.state === 'notWorthIt' ? 'var(--muted)' : 'var(--text)' }}>
-              {savingPct(item.originalBytes, r.outputBytes)}%
+              {bigger ? `+${-savingPct(item.originalBytes, r.outputBytes)}` : savingPct(item.originalBytes, r.outputBytes)}%
             </span>
             <span className="muted">
-              smaller · {formatSize(item.originalBytes)} → {formatSize(r.outputBytes)}
+              {bigger ? 'bigger' : 'smaller'} · {formatSize(item.originalBytes)} → {formatSize(r.outputBytes)}
             </span>
-            <span className={`chip ${lowQuality ? 'warn' : 'good'}`}>
-              <Icon name={lowQuality ? 'info' : 'check'} size={14} /> {lowQuality ? 'Check closely' : qualityWords(r.ssim)}
-            </span>
+            {!bigger && (
+              <span className={`chip ${lowQuality ? 'warn' : 'good'}`}>
+                <Icon name={lowQuality ? 'info' : 'check'} size={14} /> {lowQuality ? 'Check closely' : qualityWords(r.ssim)}
+              </span>
+            )}
           </div>
 
           {item.replaced && (
@@ -141,7 +144,14 @@ export default function FileDetail() {
           )}
           {item.state === 'notWorthIt' && (
             <div className="banner info">
-              <strong>Not smaller.</strong> The compressed copy came out the same size or bigger, so your original is kept as is.
+              <strong>Not smaller.</strong> The compressed copy came out the same size or bigger, so your original is kept as is. This happens
+              with videos that are already well compressed (for example from WhatsApp or a screen recorder). Compress again to retry with the
+              newer settings.
+              <div style={{ marginTop: 10 }}>
+                <button className="btn small primary" onClick={() => void compress()}>
+                  <Icon name="compress" size={16} /> Compress again
+                </button>
+              </div>
             </div>
           )}
         </section>

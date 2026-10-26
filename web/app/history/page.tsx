@@ -49,7 +49,7 @@ export default function HistoryPage() {
                       <span className="row-title">{x.name}</span>
                       <span className="row-sub">
                         {formatDate(r?.finishedAt ?? x.addedAt)} · {formatSize(x.originalBytes)}
-                        {r && <> → {formatSize(r.outputBytes)} (−{savingPct(x.originalBytes, r.outputBytes)}%) · {qualityWords(r.ssim)}</>}
+                        {r && <> → {formatSize(r.outputBytes)} ({r.outputBytes < x.originalBytes ? `−${savingPct(x.originalBytes, r.outputBytes)}%` : 'not smaller'}) · {qualityWords(r.ssim)}</>}
                       </span>
                       {(x.state === 'notWorthIt' || x.state === 'failed') && x.reason && <span className="row-sub">{x.reason}</span>}
                     </span>
