@@ -6,20 +6,11 @@ import Icon from '@/components/Icon';
 import { DeviceCard, NotificationsCard } from '@/components/PhoneCards';
 import { ScreenHeader } from '@/components/Shell';
 import { Segmented } from '@/components/ui';
+import { applyTheme, useTheme, type Theme } from '@/components/theme';
 import { useLibrary } from '@/components/useLibrary';
 import { engine } from '@/engine/engine';
 import { PHOTO_FORMATS, PRESETS } from '@/lib/rules';
 import type { PhotoFormat, Preset, Settings, VideoCodec } from '@/lib/types';
-
-type Theme = 'dark' | 'light' | 'system';
-
-function applyTheme(t: Theme) {
-  try {
-    localStorage.setItem('theme', t);
-  } catch {}
-  const resolved = t === 'system' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : t;
-  document.documentElement.dataset.theme = resolved;
-}
 
 /** Typical video saving for the chosen preset. H.264 needs 1.4× the bitrate of HEVC for the same look, so it saves less. */
 function videoSaving(preset: Preset, codec: VideoCodec) {
@@ -57,14 +48,11 @@ function Option<T extends string>(p: { value: T; current: T; onPick: (v: T) => v
 
 export default function SettingsPage() {
   const { data } = useLibrary();
-  const [theme, setTheme] = useState<Theme>('light');
+  const theme = useTheme();
   const [hevcPlays, setHevcPlays] = useState<boolean | null>(null);
   const s = data?.settings;
 
   useEffect(() => {
-    try {
-      setTheme((localStorage.getItem('theme') as Theme) || 'light');
-    } catch {}
     setHevcPlays(document.createElement('video').canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"') !== '');
   }, []);
 
@@ -147,10 +135,7 @@ export default function SettingsPage() {
         <h2 className="section-label">Appearance</h2>
         <Segmented<Theme>
           value={theme}
-          onChange={(t) => {
-            setTheme(t);
-            applyTheme(t);
-          }}
+          onChange={applyTheme}
           options={[
             { value: 'dark', label: <><Icon name="moon" size={14} /> Dark</> },
             { value: 'light', label: <><Icon name="sun" size={14} /> Light</> },

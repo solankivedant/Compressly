@@ -6,6 +6,7 @@ import { formatSize, savingPct } from '@/lib/format';
 import type { MediaItem } from '@/lib/types';
 import { askConfirm } from './Dialog';
 import { deviceInfo } from './device';
+import { saveFile } from './useLibrary';
 
 const sameType = (a: string, b: string) => a.replace('jpeg', 'jpg') === b.replace('jpeg', 'jpg');
 
@@ -46,4 +47,20 @@ export async function replaceOnDevice(item: MediaItem): Promise<string> {
   if (!ok) return '';
   await engine.replaceInFolder(id);
   return `Replaced on your device · ${formatSize(item.originalBytes - r.outputBytes)} freed.`;
+}
+
+/**
+ * "Keep both": saves the compressed copy as a new file (share sheet on phones, Downloads on computers) and leaves
+ * the original untouched. Returns a message for the page, or '' if the user cancelled.
+ */
+export async function downloadCopy(item: MediaItem): Promise<string> {
+  const r = item.result;
+  if (!r) throw new Error('Compress the file first.');
+  const file = await engine.output(item.id);
+  if (!file) throw new Error("The compressed copy isn't on this device any more. Compress the file again.");
+  const base = item.name.replace(/\.[^.]+$/, '');
+  const how = await saveFile(file, `${base}-compressed.${r.outputExt}`, deviceInfo().phone);
+  if (how === 'cancelled') return '';
+  engine.markKeptBoth(item.id);
+  return `${how === 'shared' ? 'Shared' : 'Downloaded'} the ${formatSize(r.outputBytes)} copy · the original is kept too.`;
 }

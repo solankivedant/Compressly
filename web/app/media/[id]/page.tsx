@@ -3,7 +3,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { askConfirm } from '@/components/Dialog';
-import { replaceOnDevice } from '@/components/replace';
+import { downloadCopy, replaceOnDevice } from '@/components/replace';
 import Compare from '@/components/Compare';
 import Icon from '@/components/Icon';
 import { ScreenHeader } from '@/components/Shell';
@@ -66,6 +66,11 @@ export default function FileDetail() {
       const msg = await replaceOnDevice(item);
       if (msg) setNote(msg);
     });
+  const keepBoth = () =>
+    act(async () => {
+      const msg = await downloadCopy(item);
+      if (msg) setNote(msg);
+    });
 
   return (
     <>
@@ -115,10 +120,19 @@ export default function FileDetail() {
             </span>
           )}
 
+          {item.keptBoth && !item.replaced && (
+            <span className="chip" style={{ justifySelf: 'start' }}>
+              <Icon name="download" size={14} /> New copy saved · original kept
+            </span>
+          )}
+
           {(item.state === 'ready' || item.state === 'freed') && !item.replaced && (
-            <div className="two">
+            <div className="decide">
               <button className="btn block" onClick={() => void decide('keepOriginal')}>
                 Keep original
+              </button>
+              <button className="btn block" onClick={() => void keepBoth()}>
+                <Icon name="download" size={18} /> Keep both
               </button>
               <button className="btn primary block" onClick={() => void replace()}>
                 <Icon name="check" size={18} /> Replace in device

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDevice } from '@/components/device';
 import Icon from '@/components/Icon';
+import { openPreview } from '@/components/Preview';
 import { ScreenHeader } from '@/components/Shell';
 import { FileRow, ProgressBar, Segmented, Thumb, clockTime, stateWords, useNow } from '@/components/ui';
 import { useLibrary } from '@/components/useLibrary';
@@ -222,25 +223,27 @@ export default function CompressPage() {
             return (
               <div key={x.id} className="queue-row">
                 <div className="file-row" style={{ padding: 0 }}>
-                  <Thumb item={x} size={40} />
-                  <span className="row-main">
-                    <span className="row-title">{x.name}</span>
-                    <span className="row-sub">
-                      {stateWords(x.state)}
-                      {x.attempt === 2 && ' (second try)'}
-                      {running && ` · ${Math.round(frac * 100)}%`}
-                    </span>
-                    {p && (
-                      <span className="eta">
-                        <Icon name="clock" size={13} />
-                        {running
-                          ? `${formatEtaShort(p.end)} left`
-                          : p.start < 1
-                            ? `next · takes ${formatEtaShort(p.end - p.start)}`
-                            : `starts in ${formatEtaShort(p.start)} · takes ${formatEtaShort(p.end - p.start)}`}
+                  <button type="button" className="row-link row-button" onClick={() => openPreview(x)} aria-label={`View ${x.name}`}>
+                    <Thumb item={x} size={40} />
+                    <span className="row-main">
+                      <span className="row-title">{x.name}</span>
+                      <span className="row-sub">
+                        {stateWords(x.state)}
+                        {x.attempt === 2 && ' (second try)'}
+                        {running && ` · ${Math.round(frac * 100)}%`}
                       </span>
-                    )}
-                  </span>
+                      {p && (
+                        <span className="eta">
+                          <Icon name="clock" size={13} />
+                          {running
+                            ? `${formatEtaShort(p.end)} left`
+                            : p.start < 1
+                              ? `next · takes ${formatEtaShort(p.end - p.start)}`
+                              : `starts in ${formatEtaShort(p.start)} · takes ${formatEtaShort(p.end - p.start)}`}
+                        </span>
+                      )}
+                    </span>
+                  </button>
                   <button className="icon-btn" aria-label={`Cancel ${x.name}`} onClick={() => engine.cancel(x.id)}>
                     <Icon name="close" size={16} />
                   </button>
@@ -279,6 +282,7 @@ export default function CompressPage() {
                   key={x.id}
                   item={x}
                   href={null}
+                  onOpen={() => openPreview(x)}
                   extra={
                     gone(x) ? (
                       <span className="eta">Pick this file again to compress it</span>
@@ -307,7 +311,7 @@ export default function CompressPage() {
             </div>
             {todo.some((x) => x.state === 'failed') && (
               <p className="muted" style={{ fontSize: 13, padding: '0 4px 8px' }}>
-                Tap a failed file to see why and try again.
+                Tap a file to view it. Failed files show why on their page in Media.
               </p>
             )}
           </section>

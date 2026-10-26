@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import Icon from '@/components/Icon';
 import { askConfirm } from '@/components/Dialog';
-import { replaceOnDevice } from '@/components/replace';
+import { downloadCopy, replaceOnDevice } from '@/components/replace';
 import { ScreenHeader } from '@/components/Shell';
 import { Empty, FileRow, Segmented, stateWords } from '@/components/ui';
 import { useLibrary } from '@/components/useLibrary';
@@ -38,11 +38,11 @@ export default function MediaPage() {
   const remove = async (x: MediaItem) => {
     if (await askConfirm({ title: 'Remove from Compressly?', body: `"${x.name}" on your device is not touched.`, ok: 'Remove', danger: true })) void engine.remove(x.id);
   };
-  const replace = async (x: MediaItem) => {
+  const run = async (fn: () => Promise<string>) => {
     setError('');
     setNote('');
     try {
-      setNote(await replaceOnDevice(x));
+      setNote(await fn());
     } catch (e) {
       setError((e as Error).message);
     }
@@ -85,13 +85,22 @@ export default function MediaPage() {
               <FileRow
                 key={x.id}
                 item={x}
-                extra={<span className={`chip small ${CHIP[x.state] ?? 'primary'}`} style={{ justifySelf: 'start', marginTop: 4 }}>{SHORT[x.state] ?? stateWords(x.state)}</span>}
+                extra={
+                  <span className={`chip small ${x.keptBoth && x.state === 'ready' ? '' : (CHIP[x.state] ?? 'primary')}`} style={{ justifySelf: 'start', marginTop: 4 }}>
+                    {x.keptBoth && x.state === 'ready' ? 'Kept both' : (SHORT[x.state] ?? stateWords(x.state))}
+                  </span>
+                }
                 trailing={
                   <span className="row-actions">
                     {(x.state === 'ready' || x.state === 'freed') && !x.replaced && (
-                      <button className="btn primary small" aria-label={`Replace ${x.name}`} onClick={() => void replace(x)}>
-                        Replace
-                      </button>
+                      <>
+                        <button className="btn small" aria-label={`Keep both: download the compressed copy of ${x.name}`} title="Download the new copy and keep the original" onClick={() => void run(() => downloadCopy(x))}>
+                          <Icon name="download" size={16} /> Keep both
+                        </button>
+                        <button className="btn primary small" aria-label={`Replace ${x.name}`} onClick={() => void run(() => replaceOnDevice(x))}>
+                          Replace
+                        </button>
+                      </>
                     )}
                     <button className="icon-btn" aria-label={`Remove ${x.name}`} title="Remove" onClick={() => void remove(x)}>
                       <Icon name="trash" size={18} />

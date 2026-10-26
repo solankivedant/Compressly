@@ -502,3 +502,34 @@ img, video { max-width: 100%; }
 /* Figures are typical, not exact: a small grey "UP TO" sits above each. */
 .opt-fig small.upto { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; color: var(--disabled); line-height: 1.2; }
 .option-card.on .opt-fig small.upto { color: inherit; opacity: 0.55; }
+
+/* ---------- Light / dark switch in the header ---------- */
+.theme-toggle {
+  display: inline-flex; flex: none; align-self: flex-start; gap: 2px; padding: 3px; margin-top: 6px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--muted); cursor: pointer;
+}
+.theme-toggle span { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; transition: background 0.15s var(--ease), color 0.15s var(--ease); }
+.theme-toggle span.on { background: var(--primary); color: var(--on-primary); }
+.theme-toggle:hover { background: var(--raised); }
+
+/* Keep original · Keep both · Replace: three across, Replace full width on narrow phones */
+.decide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 480px) {
+  .decide { grid-template-columns: 1fr 1fr; }
+  .decide .btn.primary { grid-column: 1 / -1; order: -1; }
+}
+
+/* ---------- Preview of a file before compressing ---------- */
+.row-button { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.row-button:hover .row-title { text-decoration: underline; }
+.preview {
+  width: min(900px, 100%); max-height: calc(100dvh - 32px); display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px;
+  padding: 14px; border-radius: var(--r-sheet); background: var(--sheet); border: 1px solid var(--border-subtle);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); animation: pop 0.18s var(--ease);
+}
+.preview-head { display: flex; align-items: center; gap: 12px; }
+.preview-head .grow { display: grid; }
+.preview-body { display: grid; place-items: center; min-height: 160px; border-radius: 12px; background: #000; overflow: hidden; text-align: center; }
+.preview-body > .muted { padding: 24px; color: #c9ccd4; }
+.preview-body img, .preview-body video { display: block; max-width: 100%; max-height: calc(100dvh - 140px); object-fit: contain; }
+.preview-body iframe { width: 100%; height: calc(100dvh - 140px); border: 0; background: #fff; }

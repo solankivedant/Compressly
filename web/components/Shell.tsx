@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { DialogHost } from './Dialog';
 import Icon, { type IconName } from './Icon';
+import { PreviewHost } from './Preview';
+import { applyTheme, resolveTheme, useTheme } from './theme';
 import { useLibrary } from './useLibrary';
 
 const NAV: { href: string; label: string; icon: IconName }[] = [
@@ -59,6 +61,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       </main>
 
       <DialogHost />
+      <PreviewHost />
 
       <nav className="bottom-nav" aria-label="Main">
         {NAV.map((n) => (
@@ -88,7 +91,33 @@ export function ScreenHeader({ title, subtitle, back, actions }: { title: string
         <h1>{title}</h1>
       </div>
       {actions}
+      <ThemeToggle />
     </header>
+  );
+}
+
+/** Small light / dark switch at the top of every screen. Settings still offers "System". */
+function ThemeToggle() {
+  const theme = useTheme();
+  const [dark, setDark] = useState(false);
+  useEffect(() => setDark(resolveTheme(theme) === 'dark'), [theme]);
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      role="switch"
+      aria-checked={dark}
+      aria-label="Dark theme"
+      title={dark ? 'Switch to light' : 'Switch to dark'}
+      onClick={() => applyTheme(dark ? 'light' : 'dark')}
+    >
+      <span className={dark ? '' : 'on'}>
+        <Icon name="sun" size={14} />
+      </span>
+      <span className={dark ? 'on' : ''}>
+        <Icon name="moon" size={14} />
+      </span>
+    </button>
   );
 }
 

@@ -80,6 +80,8 @@ export interface MediaItem {
   folderPath?: string;
   /** The compressed copy replaced the original in its folder (the original is gone). */
   replaced?: boolean;
+  /** The compressed copy was saved as a new file next to the original ("Keep both"); both stay on the device. */
+  keptBoth?: number;
   result?: ItemResult;
   reason?: string; // why it was not worth it, or the error
   decidedAt?: number;

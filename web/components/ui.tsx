@@ -106,12 +106,15 @@ export function FileRow({
   trailing,
   extra,
   href = `/media/${item.id}`,
+  onOpen,
 }: {
   item: MediaItem;
   trailing?: ReactNode;
   /** A third line under the sizes, e.g. the time estimate. */
   extra?: ReactNode;
   href?: string | null;
+  /** Tapping the row runs this instead of following a link, e.g. to preview the file. */
+  onOpen?: () => void;
 }) {
   const r = item.result;
   const after = r && item.state !== 'notWorthIt' && item.state !== 'failed' ? r.outputBytes : item.estimateBytes;
@@ -144,7 +147,11 @@ export function FileRow({
   );
   return (
     <div className="file-row">
-      {href ? (
+      {onOpen ? (
+        <button type="button" className="row-link row-button" onClick={onOpen} aria-label={`View ${item.name}`}>
+          {main}
+        </button>
+      ) : href ? (
         <Link href={href} className="row-link">
           {main}
         </Link>

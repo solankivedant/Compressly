@@ -322,7 +322,7 @@ class Engine {
       // Only "not smaller" is a dead end. A copy below the quality bar is still offered, with a "check closely"
       // warning, so the user can zoom in and decide (the web version is for judging results by eye).
       const reason = r.outputBytes >= x.originalBytes ? 'The compressed copy would not be smaller.' : undefined;
-      this.update(m.id, { state: reason ? 'notWorthIt' : 'ready', progress: 1, result: r, reason, decidedAt: undefined, stageStartedAt: undefined });
+      this.update(m.id, { state: reason ? 'notWorthIt' : 'ready', progress: 1, result: r, reason, decidedAt: undefined, keptBoth: undefined, stageStartedAt: undefined });
       this.batch.done++;
       if (!reason) this.batch.freed += x.originalBytes - r.outputBytes;
       this.fileDone(x.kind, reason ? null : x.originalBytes - r.outputBytes);
@@ -427,6 +427,11 @@ class Engine {
       await removeOutput(id, x.result?.outputExt);
       this.update(id, { state: 'keptOriginal', decidedAt: Date.now() });
     }
+  }
+
+  /** "Keep both": the compressed copy was saved as a new file, so the original stays and the copy is not deleted here. */
+  markKeptBoth(id: string) {
+    if (this.get(id)?.result) this.update(id, { keptBoth: Date.now() });
   }
 
   /**
