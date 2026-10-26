@@ -1,33 +1,34 @@
 /* Compressly tokens, colour v2 (lib/app/theme.dart): cobalt = action, lime = freed, coral = still to free. Light first on the web. */
 :root[data-theme='dark'] {
-  --primary: #4d6bff;
+  /* Containers are lifted mid-tones with near-white text so blue, coral and status colours read clearly on the dark page. */
+  --primary: #5470ff;
   --on-primary: #ffffff;
-  --primary-container: #1c2658;
-  --on-primary-container: #b9c5ff;
+  --primary-container: #2b3a8f;
+  --on-primary-container: #e0e5ff;
   --accent: #c6f432;
   --on-accent: #090b10;
-  --accent-container: #26330b;
-  --on-accent-container: #d9fa74;
-  --tertiary: #ff6a3d;
+  --accent-container: #3a4d10;
+  --on-accent-container: #e6fd9a;
+  --tertiary: #ff7a50;
   --on-tertiary: #090b10;
-  --tertiary-container: #3d1a0f;
-  --on-tertiary-container: #ff9b7a;
-  --success: #22c55e;
-  --success-container: #0d2a1a;
-  --warning: #ffb020;
-  --warning-container: #3a2a08;
-  --error: #f04438;
-  --error-container: #3a1210;
+  --tertiary-container: #6b2a14;
+  --on-tertiary-container: #ffd6c8;
+  --success: #3ddc7a;
+  --success-container: #12402a;
+  --warning: #ffc04d;
+  --warning-container: #4a3608;
+  --error: #ff6b5e;
+  --error-container: #4d1714;
   --background: #090b10;
-  --card: #151922;
-  --sheet: #1c212c;
-  --sunken: #1c212c;
-  --raised: #2a303d;
+  --card: #161b26;
+  --sheet: #1e2430;
+  --sunken: #1e2430;
+  --raised: #2c3342;
   --text: #f2f4f8;
-  --muted: #a3aab8;
-  --disabled: #5a6273;
-  --border-subtle: #1c212c;
-  --border: #2a303d;
+  --muted: #b0b7c5;
+  --disabled: #5f6779;
+  --border-subtle: #232937;
+  --border: #343b4a;
   color-scheme: dark;
 }
 
@@ -533,3 +534,7 @@ img, video { max-width: 100%; }
 .preview-body > .muted { padding: 24px; color: #c9ccd4; }
 .preview-body img, .preview-body video { display: block; max-width: 100%; max-height: calc(100dvh - 140px); object-fit: contain; }
 .preview-body iframe { width: 100%; height: calc(100dvh - 140px); border: 0; background: #fff; }
+
+/* Dark: coloured numbers on plain cards use the lighter shades, which have enough contrast. */
+:root[data-theme='dark'] .opt-fig.primary b { color: #9fb0ff; }
+:root[data-theme='dark'] .opt-fig.tertiary b { color: #ffa384; }
