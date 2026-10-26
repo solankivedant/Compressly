@@ -5,7 +5,7 @@ A website version of Compressly for checking compression by hand before the phon
 **Everything happens on the device that opens the site** (phone, tablet or laptop). Nothing is uploaded and no server does any work:
 
 - **Video**: the device's own encoder through the browser (WebCodecs, via [Mediabunny](https://mediabunny.dev)). HEVC when the device can make it at that size, otherwise H.264 at 1.4× the bitrate.
-- **Photos**: WebAssembly encoders in the browser (mozjpeg for JPEG, AVIF standing in for HEIC).
+- **Photos**: WebAssembly encoders in the browser (mozjpeg for JPEG, AVIF standing in for HEIC)..
 - **Quality check**: SSIM on brightness, on the whole photo or on 6–30 frames spread through a video.
 - **Storage**: the library list, settings, measured speeds and thumbnails are kept in the browser's IndexedDB; compressed copies in the browser's private file storage (OPFS). Settings → This device shows how much is used.
 
