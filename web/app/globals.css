@@ -521,6 +521,12 @@ img, video { max-width: 100%; }
 }
 
 /* ---------- Preview of a file before compressing ---------- */
+/* File rows: the whole row opens the file, but the format menu and other controls sit above and take their own taps. */
+.row-stretch { position: relative; }
+.row-hit { position: absolute; inset: 0; z-index: 0; padding: 0; border: 0; background: none; border-radius: inherit; cursor: pointer; }
+.row-stretch > :not(.row-hit) { pointer-events: none; }
+.row-stretch :is(select, input, a, button):not(.row-hit) { position: relative; z-index: 1; pointer-events: auto; }
+.row-stretch:has(.row-hit:hover) .row-title { text-decoration: underline; }
 .row-button { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .row-button:hover .row-title { text-decoration: underline; }
 .preview {

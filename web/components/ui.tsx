@@ -145,19 +145,18 @@ export function FileRow({
       )}
     </>
   );
+  // The tap target is a layer under the row, not a wrapper around it, so controls in `extra`
+  // (the format menu) get their own taps instead of opening the file.
   return (
     <div className="file-row">
-      {onOpen ? (
-        <button type="button" className="row-link row-button" onClick={onOpen} aria-label={`View ${item.name}`}>
-          {main}
-        </button>
-      ) : href ? (
-        <Link href={href} className="row-link">
-          {main}
-        </Link>
-      ) : (
-        <div className="row-link">{main}</div>
-      )}
+      <div className="row-link row-stretch">
+        {onOpen ? (
+          <button type="button" className="row-hit" onClick={onOpen} aria-label={`View ${item.name}`} />
+        ) : href ? (
+          <Link href={href} className="row-hit" aria-label={`Open ${item.name}`} />
+        ) : null}
+        {main}
+      </div>
       {trailing}
     </div>
   );
